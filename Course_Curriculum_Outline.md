@@ -1,70 +1,78 @@
 # Bruin for Data Engineers: Building a Data Platform from Zero
 
-Version 2 (revised 2026-10-05). Supersedes the original outline. See `Curriculum_Review_Notes.md` for what changed and why.
+Version 3.0 (revised 2026-10-05). Supersedes v2.1. See `Curriculum_Review_Notes.md` for what changed and why. The source requirements for this course are in `Curriculum_Planning_Prompt.md`; where this outline and that prompt differ, the prompt states the intent and this outline states how it is met. The hosted platform that delivers this course is specified in `Hosted_Platform_Build_Spec.md`.
 
-A project-based course for data engineers who know SQL and are new to Bruin. Every module extends one evolving banking analytics platform for a fictional institution ("Lakota Bank"), so each lesson, lab, and break/fix exercise reinforces the same codebase, dependency graph, and business entities.
+A project-based, hosted course for data engineers who know SQL and are new to Bruin. Every module extends one evolving banking analytics platform for a fictional institution ("Lakota Bank"), so each lesson, lab, and break/fix exercise reinforces the same codebase, dependency graph, and business entities.
 
 **Design goals**
 
-1. No Docker, no containers, no local services. Every lab runs from the Bruin CLI and a Git repository.
-2. No paid account is needed to start. Modules 0-12, 14, 15 and the capstone run on a free local DuckDB database.
-3. Snowflake remains the production target. Module 13 and the Snowflake path through the capstone use it.
-4. Every lab verifies itself. A learner can tell whether they are correct without an instructor.
-5. Works on Windows, macOS, and Linux with identical instructions wherever Bruin allows it.
+1. Browser only. Learners install nothing. They open a hosted VS Code environment that already contains Bruin, uv, Git, Postgres, DuckDB, SQLite, the Source Simulator, and the course lessons. Containers exist only inside the operator's infrastructure and are never visible to learners.
+2. Paid and inexpensive. The course is a low-priced paid service, so the operator provides the compute. No learner needs an outside account for any module. GitHub is optional in Module 14.
+3. Fully self-contained. Every source system and every target runs inside the learner's environment: Postgres, SQLite, DuckDB, flat files, a mock API, and a Vendor Feed. Real external sources appear only as optional extras.
+4. Postgres is the primary warehouse from Module 2 onward. DuckDB serves the first-run exercises (Modules 0 and 1), a Module 3 engine-comparison lab, and local file analytics. SQLite and Postgres serve as sources. Snowflake is not required anywhere. Module 13 covers cloud-warehouse porting as an optional module that needs no account.
+5. Every lab verifies itself. A learner can tell whether they are correct without an instructor.
+6. Conditional execution is a first-class topic. Pipelines often must run only when conditions in the data are met, and many sources are generic (files, vendor feeds, status tables, web endpoints) with no official Bruin connector. The course teaches native sensors where Bruin has them and **custom Python sensors** where it does not.
+7. Accessible by design (see the standards at the end of this document).
 
-**Target operating model:** Bruin CLI with Git.
-**Local target:** DuckDB (free, file based, no account).
-**Production target:** Snowflake.
-**CI/CD reference implementation:** GitHub Actions (free for public repositories). Gitea Actions and GitLab CI appear as optional appendices.
+**Target operating model:** Bruin CLI with Git, inside a hosted VS Code environment.
+**Primary warehouse:** Postgres.
+**Supporting engines:** DuckDB (first-run exercises, engine comparison, local file analytics), SQLite (source system).
+**CI/CD:** a built-in `make ci` pipeline in the environment for every learner. GitHub Actions appears as an optional lab for learners who bring their own GitHub account.
 
 ---
 
-# 1. Prerequisites and Required Software
+# 1. Prerequisites and the Learning Environment
 
 ## 1.1 Student Prerequisites
 
 Required:
 
 - Comfortable SQL: joins, aggregates, CTEs, and basic window functions. Roughly 6-12 months of regular use.
-- Basic Git: clone, commit, branch, push.
-- Ability to use a terminal.
+- Basic Git: clone, commit, branch.
+- Ability to use a terminal at a basic level.
+- A modern browser and a stable internet connection.
 
 Not required:
 
-- Python experience. Modules 0-5 use no Python. Module 6 teaches the Python asset lifecycle and assumes only basic Python (functions, lists, dictionaries). A Python primer appendix covers the rest.
-- Prior Snowflake, Kimball, or warehouse experience. Module 1 and Module 7 include short self-contained primers on the dimensional modeling and history concepts used later.
+- Deep Python experience. Modules 0-5 use no Python. Module 6 teaches the Python asset lifecycle and assumes basic Python (functions, lists, dictionaries, exceptions). Modules 10 and 11 (Python quality gates and custom Python sensors) use Python more heavily, so a Python primer appendix covers file handling, HTTP requests, retries, and exit behavior.
+- Prior Postgres, Snowflake, Kimball, or warehouse experience. Module 1 and Module 7 include short self-contained primers on the dimensional modeling and history concepts used later.
+- Any software installation, any cloud account, or any credit card beyond the course purchase.
 
 Advanced material (marked **[Advanced]**) assumes MERGE patterns and dimensional modeling and is skippable on the Core track.
 
-## 1.2 Required Software
+## 1.2 What Is Inside the Environment
 
-| Component | Required? | Purpose | Notes |
-|-----------|-----------|---------|-------|
-| Bruin CLI | Yes | Develop and run pipelines | Single install command. On Windows, run in Git Bash or WSL. |
-| Git | Yes | Source control | Bruin itself requires Git. |
-| Text editor | Yes | Editing assets | Any editor works. |
-| VS Code + Bruin extension | Optional | Lineage view, rendered queries, autocomplete | Never required. Every lab gives CLI equivalents. |
-| DuckDB | Bundled | Local warehouse | Used through Bruin connections. A standalone DuckDB CLI is optional for ad hoc queries (`bruin query` also works). |
-| Python | Not required | Python assets | Bruin installs and manages Python versions and dependencies itself through uv. |
-| Docker | Not required | n/a | Removed. Sources are simulated with files and SQLite. |
-| Snowflake account | Module 13 only | Production target | 30-day trial with no credit card. Start it at Module 13, not earlier (see 1.4). |
-| GitHub account | Module 14 only | CI/CD | Free. Local-only path provided. |
+Every learner gets a private, persistent Linux workspace opened in a browser. Versions are pinned and recorded in the course repository.
 
-## 1.3 Ways to Take the Course
+| Component | Purpose | Notes |
+|-----------|---------|-------|
+| VS Code (web) | Editor, terminal, file explorer | Includes the Bruin extension if it can be installed in the hosted editor (verify), and the course runner panel (lessons, Check, Hint, Reset). |
+| Bruin CLI | Develop and run pipelines | Version pinned. |
+| uv and cached Python versions | Python assets, sensors, checks | Bruin manages Python environments through uv. Interpreters and packages are pre-cached, so labs need no internet. |
+| Git | Source control | Local repository with a local `origin` for branch and review exercises. |
+| Postgres | Primary warehouse and two source databases | Runs inside the workspace. Roles, schemas, and several databases are pre-created. |
+| DuckDB | Local analytics and early modules | Single-writer, single-process file engine (see Module 0 knowledge check). |
+| SQLite | Mortgage source system | File based. |
+| Source Simulator and mock API | Deterministic sources with fault injection | Section 2. |
+| Self-check scripts | Automated verification | One per module step. |
 
-| Path | Accounts needed | Covers |
-|------|-----------------|--------|
-| Local (default) | None | Modules 0-12, 14 (local portion), 15, 16 on DuckDB |
-| Local + GitHub | GitHub | Adds the live CI/CD labs in Module 14 |
-| Full (Snowflake) | GitHub, Snowflake trial | Everything, including Module 13 and the Snowflake capstone variant |
+Learner-side requirements: a browser and a connection. Everything else is provided.
 
-Optional hosted-editor path (browser only, nothing installed locally): publish the repository with a dev-container or cloud-workspace configuration. Treat as optional and verify it works with Bruin before advertising it.
+## 1.3 How the Environment Behaves
 
-## 1.4 Snowflake Trial Timing
+- **Persistence.** Files, Git history, and database state persist between sessions. Idle workspaces stop automatically and resume where the learner left off.
+- **Resets.** A learner can reset any step to its known-good starter state, which restores files, the database state, and the simulator clock. Learner changes are saved to a branch first.
+- **Export.** A learner can download their work (a Git bundle and database dumps) at any time, so the work is theirs.
+- **Fair-use limits.** Monthly environment hours and idle timeouts are published before purchase.
+- **Offline-first inside the environment.** No lab depends on an outside service. Optional labs that do are marked.
 
-The Snowflake trial lasts 30 days from sign-up or until the free credit balance is used, and the account is suspended afterward. A 52-hour course taken at 5 hours per week would outlast a trial started on day one. Learners therefore build and test everything on DuckDB first and create the trial account at Module 13. Because the same assets run on both targets through Bruin environments, nothing is rewritten when the target changes.
+## 1.4 Engine Roles
 
-Snowflake sign-in requirements change over time (multi-factor and key-pair authentication in particular). Module 13 includes a key-pair authentication walkthrough as the primary path so the course does not depend on password sign-in remaining available.
+| Engine | Role | Why |
+|--------|------|-----|
+| Postgres | Source databases (core banking, CRM) and the warehouse | A real server database with concurrent writers, roles, and grants. Pipelines and sensors can run at the same time without file locks. Bruin documents `pg.sql`, `pg.seed`, `pg.sensor.table`, `pg.sensor.query`, and `pg.source`, and supports `merge`, `scd2_by_column`, `scd2_by_time`, and the Data Vault strategies on Postgres. |
+| DuckDB | First-run exercises (Modules 0 and 1), a Module 3 engine-comparison lab, local analytics on Parquet and CSV files | Fast to start. Bruin's docs state that DuckDB does not allow concurrency between processes, which makes it a poor fit for sensors and parallel pipelines. |
+| SQLite | Mortgage source | A different source engine, read through ingestr. |
 
 ---
 
@@ -81,26 +89,33 @@ Lakota Bank wants a modern analytics platform covering:
 - Historical reconstruction
 - Replayability
 
-## Source Systems (simulated, no Docker)
+## Source Systems (simulated, inside the environment)
 
-All sources are synthetic, deterministic, and contain no real personal data. They are produced by a bundled **Source Simulator** that runs offline.
+All sources are synthetic, deterministic, and contain no real personal data. They are produced by a bundled **Source Simulator** and a **mock API** that run inside the learner's environment.
 
 | Source | Simulated as | Entities |
 |--------|--------------|----------|
-| Core Banking | SQLite database file | Customers, Accounts, Transactions |
-| CRM | SQLite database file | CRM Customers, Interactions |
-| Flat Files | CSV files | Branches, Products |
-| External API | JSON fixtures (offline default) with an optional live FX endpoint | FX Rates |
+| Core Banking | Postgres database `src_core_banking` | Customers, Accounts, Transactions |
+| CRM | Postgres database `src_crm` | CRM Customers, Interactions |
+| Flat Files | CSV files in a drop folder | Branches, Products |
+| External API | Mock REST API service with pagination, authentication, rate limits, and fault switches (optional real public API as a stretch) | FX Rates |
 | Mortgage Platform (capstone) | SQLite database file | Loans, Payments, Borrowers |
+| Vendor Feed (generic source, no Bruin connector) | Drop folder of files with a manifest or status file, plus a status table | Daily statement and settlement files, a completeness flag, a vendor run status |
+
+The Vendor Feed exists to teach custom Python sensors. It models the common case of a generic source whose readiness depends on conditions in the data: a file has arrived, the file has stopped growing, the row count meets a threshold, the maximum business date equals the processing date, a status flag says COMPLETE, or a checksum matches the manifest.
 
 Stretch entities (not required): Campaigns, Economic Indicators.
 
 ### Source Simulator requirements
 
 - Deterministic from a seed value.
-- Advances by one simulated business day on demand, so incremental loads, missed days, and replays are practiced against a moving source.
-- Fault injection switches: late-arriving rows, duplicate rows, corrupted day, partial load, schema drift, deleted source rows.
-- Runs with no network and no container.
+- Advances by one simulated business day on demand, writing inserts, updates (with `updated_at` values), and deletes to the source databases, so incremental loads, missed days, and replays are practiced against a moving source.
+- Fault injection switches: late-arriving rows (backdated `updated_at`), duplicate rows, corrupted day, partial load, schema drift, deleted source rows. Each is documented, reversible, and recorded in the manifest.
+- Mock API controls: return HTTP 500 or 429, slow responses, expired credentials, pagination changes, schema drift.
+- Vendor Feed controls: delay a file's arrival, deliver a file in growing chunks, deliver an empty or under-threshold file, flip the completeness flag late, deliver a checksum mismatch, deliver a prior day's file by mistake.
+- A simulated clock that sensors and schedulers can read, so waiting scenarios finish in seconds.
+- A per-day manifest of true row counts and checksums, used by self-checks.
+- Runs entirely inside the environment with no outside network.
 
 ---
 
@@ -148,58 +163,59 @@ This resolves the original outline's inconsistency where `CUSTOMER_CURRENT` and 
 
 # 4. Complete Course Outline
 
-| Module | Title | Duration | Needs Snowflake |
-|--------|-------|----------|-----------------|
-| 0 | Environment Setup | 1 h | No |
-| 1 | Bruin Fundamentals | 2.5 h | No |
-| 2 | Landing Layer Ingestion | 3.5 h | No |
-| 3 | SQL Assets and Materialization | 4 h | No |
-| 4 | Dependencies and Lineage | 2.5 h | No |
-| 5 | Pipeline Design | 3 h | No |
-| 6 | Python Assets | 3 h | No |
-| 7 | Historical Layer Engineering | 4 h | No |
-| 8 | Integration Layer | 3 h | No |
-| 9 | SCD Type 2 Processing | 4 h | No |
-| 10 | Data Quality Frameworks | 4 h | No |
-| 11 | Sensors and Data-State Dependencies | 3.5 h | No |
-| 12 | Replayability, Backfills, and Recovery | 4 h | No |
-| 13 | The Snowflake Target | 3.5 h | Yes |
-| 14 | Git-Based Deployment | 3 h | Optional |
-| 15 | Operations and Production Support | 3 h | No |
-| 16 | Enterprise Capstone | 8-16 h | Optional |
+| Module | Title | Duration | Required |
+|--------|-------|----------|----------|
+| 0 | Environment Tour and First Run | 1 h | Yes |
+| 1 | Bruin Fundamentals | 2.5 h | Yes |
+| 2 | Landing Layer Ingestion | 3.5 h | Yes |
+| 3 | SQL Assets and Materialization | 4 h | Yes |
+| 4 | Dependencies and Lineage | 2.5 h | Yes |
+| 5 | Pipeline Design | 3 h | Yes |
+| 6 | Python Assets | 3 h | Yes |
+| 7 | Historical Layer Engineering | 4 h | Yes |
+| 8 | Integration Layer | 3 h | Yes |
+| 9 | SCD Type 2 Processing | 4 h | Yes |
+| 10 | Data Quality Frameworks | 4.5 h | Yes |
+| 11 | Sensors, Custom Python Sensors, and Data-State Dependencies | 5 h | Yes |
+| 12 | Replayability, Backfills, and Recovery | 4 h | Yes |
+| 13 | Cloud Warehouses and Porting | 3 h | Optional |
+| 14 | Git-Based Deployment | 3 h | Yes |
+| 15 | Operations and Production Support | 3 h | Yes |
+| 16 | Enterprise Capstone | 8-16 h | Yes |
 
-Core content total: about 52 hours, plus 8-16 hours for the capstone.
+Core content total: about 53 hours including optional Module 13, plus 8-16 hours for the capstone.
 
 **What moved and why**
 
 - Landing ingestion (old 4) now precedes SQL assets (old 3), because the old order asked learners to build `CUSTOMERS_HIST` before any data had been landed.
 - Dependencies (old 6) moved up to Module 4. Every module after Module 1 uses `depends`, so teaching it late forced forward references.
 - Python assets stay after the SQL and pipeline modules but before history, since the FX fetch and the simulator advance step use them.
-- Data quality (old 11) moved ahead of sensors and replay. Sensors, recovery drills, and the CI gate all rely on checks.
-- Snowflake becomes an explicit module (13) covering what is unique to the target.
+- Data quality (old 11) moved ahead of sensors and replay. Sensors, recovery drills, and the CI gate all rely on checks. Custom Python sensors and Python checks stay in the course as required content and gained time (Module 10 grew to 4.5 h, Module 11 to 5 h).
+- The Snowflake module became an optional cloud-warehouse porting module (13). Postgres replaced DuckDB as the platform warehouse from Module 2 onward, which also lets sensors and parallel pipelines run together (Modules 5, 11, 12, 14).
 
 ---
 
-# Module 0: Environment Setup (1 h)
+# Module 0: Environment Tour and First Run (1 h)
 
-**Objectives:** install Bruin and Git, clone the course repository, run the first command, choose a path from section 1.3.
+**Objectives:** open the hosted environment, learn the layout (lesson pane, editor, terminal, Check, Hint, Reset), run the first Bruin commands, and learn what persists.
 
 **Lab**
 
-1. Install Bruin with the documented one-line installer (Git Bash or WSL on Windows).
-2. Clone the course repository.
-3. Run `bruin --version` and `bruin validate` on the starter project.
-4. Run the starter pipeline against the local DuckDB connection.
+1. Open the environment and complete the guided tour.
+2. Run `bruin --version` and `bruin validate` on the starter project.
+3. Run the starter pipeline against DuckDB, then against Postgres, and compare the connection settings.
+4. Use Check, then Reset a step, then export your work.
+5. Turn on the accessibility options (screen-reader mode for the terminal, high contrast, font size).
 
-**Self-check:** `./check` (or the documented equivalent) prints a pass/fail list: Bruin found, Git found, DuckDB connection works, starter asset materialized.
+**Self-check:** reports Bruin found, Git found, Postgres reachable, DuckDB connection works, starter asset materialized.
 
-**Break/fix:** the repository ships with `.bruin.yml` pointing at a missing path. Learners read the `bruin validate` error and repair it.
+**Break/fix:** the starter project's `.bruin.yml` names a connection that does not exist. Learners read the `bruin validate` error and repair it.
 
 **Knowledge check**
 
 1. Which file stores connections and environments?
-2. Why is `.bruin.yml` excluded from source control, and how will CI get credentials later?
-3. Why can two processes not write to the same DuckDB file at once?
+2. Why is `.bruin.yml` excluded from source control in a real project, and where do credentials come from in the hosted environment?
+3. Why can two processes not write to the same DuckDB file at once, and which engine does the course use when two pipelines must run together?
 
 ---
 
@@ -231,12 +247,15 @@ project-root/
 
 **Lab:** build landing assets for every source:
 
-- Core Banking (SQLite via ingestr): customers, accounts, transactions
-- CRM (SQLite via ingestr): customers, interactions
+- Core Banking (Postgres source database via ingestr, incremental on `updated_at`): customers, accounts, transactions
+- CRM (Postgres source database via ingestr): customers, interactions
 - Flat files (seed assets or CSV via ingestr): products, branches
-- External API: FX rates (the Python version arrives in Module 6; here use the JSON fixture as a seed)
+- External API: FX rates (the Python version arrives in Module 6; here load the JSON fixture as a seed)
+- Mortgage (SQLite via ingestr) appears in the capstone; a short demonstration here shows a second source engine
 
 **Topics:** full refresh versus incremental key, immutable snapshots, load metadata columns (`_loaded_at`, `_run_id`, `_source_file`).
+
+**Raw file archive:** the planning requirement is "raw immutable history stored in files and loaded into history tables." Each simulated day's extract is written once to an append-only `data/landing/<source>/<yyyy-mm-dd>/` archive that is never edited. Loads read from the archive, so any day can be replayed byte for byte. The exact extract-and-load mechanism is decided in the Phase A spike (see the Prompt Guide).
 
 **Expected outputs:** `landing.core_customers`, `landing.core_accounts`, `landing.core_transactions`, `landing.crm_customers`, `landing.crm_interactions`, `landing.ref_products`, `landing.ref_branches`.
 
@@ -258,7 +277,7 @@ delete+insert      merge              time_interval
 ddl                scd2_by_column     scd2_by_time
 ```
 
-Also: `table` versus `view` materialization types. `datavault_hub`, `datavault_link`, and `datavault_satellite` are documented as PostgreSQL and DuckDB only, so they appear as a short optional aside and are excluded from the Snowflake path.
+Also: `table` versus `view` materialization types. `datavault_hub`, `datavault_link`, and `datavault_satellite` are documented as PostgreSQL and DuckDB only, so they run on the course warehouse. They appear as a short optional **[Advanced]** aside (hub, link, and satellite for customers and accounts).
 
 Required fields per strategy (for example `primary_key` for merge, `incremental_key` plus `time_granularity` for `time_interval`) are taught as a lookup table learners fill in themselves.
 
@@ -296,7 +315,9 @@ B ─┘
 
 **Objectives:** pipeline structure, schedule syntax, default connections, variables, environments, reuse.
 
-**Scheduling note:** the Bruin CLI defines a schedule in `pipeline.yml` but contains no scheduler. Something external triggers runs. The course uses a GitHub Actions cron trigger as the reference (Module 14) and names alternatives (Airflow, Bruin Cloud) without building on them.
+**Scheduling note:** the Bruin CLI defines a schedule in `pipeline.yml` but contains no scheduler. Something external triggers runs. The environment ships a small scheduler harness that triggers pipelines on their cron schedule against the simulated clock, standing in for an external orchestrator so labs finish in seconds. Module 14 explains real orchestrators (CI schedulers, Airflow, Bruin Cloud) without building on them.
+
+**Environments:** define Bruin environments `default` (dev), `staging`, and `production`, each pointing at a different Postgres database in the same environment.
 
 **Lab:** split the project into four pipelines:
 
@@ -313,7 +334,7 @@ plus a shared `lib/` of reusable SQL macros or Python helpers.
 
 # Module 6: Python Assets (3 h)
 
-**Objectives:** Python asset lifecycle, isolated environments and dependency files, secrets injection, DataFrame materialization.
+**Objectives:** Python asset lifecycle, isolated environments and dependency files, secrets injection, DataFrame materialization, shared libraries in `lib/`, and failure semantics (how a raised exception or non-zero exit fails the asset and blocks downstream assets). The failure semantics lesson is the foundation for Modules 10 and 11.
 
 **Facts taught** (verified in docs): Bruin runs Python assets in managed isolated environments using uv, so no local Python install or virtual environment management is needed. Dependencies come from `pyproject.toml` with `uv.lock` (preferred) or `requirements.txt`. Returned data (DataFrames, Arrow tables, lists of dicts, generators) is materialized by the asset's `materialization` block. Run dates arrive as environment variables (`BRUIN_START_DATE`, `BRUIN_END_DATE`).
 
@@ -367,55 +388,118 @@ plus a shared `lib/` of reusable SQL macros or Python helpers.
 
 ---
 
-# Module 10: Data Quality Frameworks (4 h)
+# Module 10: Data Quality Frameworks (4.5 h)
 
 **Objectives:** built-in checks, custom checks, blocking behavior, reusable conventions.
 
 **Built-in column checks (verified):** `not_null`, `unique`, `accepted_values`, `positive`, `negative`, `non_negative`, `pattern`, `relationships`, `min`, `max`.
 
-**Custom checks (verified):** SQL-based `custom_checks` with `name`, `query`, optional `value`, optional `count`, and a `blocking` flag (default true). Row-count, freshness, and schema-drift checks are written as custom SQL checks, not as separate built-in types.
+**Custom SQL checks (verified):** `custom_checks` with `name`, `query`, optional `value`, optional `count`, and a `blocking` flag (default true). Row-count, freshness, and schema-drift checks are written as custom SQL checks. They are taught as the "row count, freshness, and schema validation" tier the planning prompt calls for.
 
-**Severity model:** Bruin exposes blocking versus non-blocking. The course defines its three-level vocabulary on top of that:
+**Custom Python checks (course pattern):** Bruin documents SQL custom checks but no Python check type. The course builds Python checks as a **Python quality-gate asset**: a Python asset that sits in the dependency graph between a built asset and its consumers, runs checks that SQL expresses poorly (cross-source reconciliation, file-versus-table comparison, statistical drift, calls to external references), writes every result to a `dq_results` table, and raises an exception to fail the asset when a blocking rule fails. Downstream assets that `depends` on the gate do not run. Phase A must confirm the failure and blocking behavior and look for any native Python check support before this module is written.
 
-| Course level | Bruin mechanism | Effect |
-|--------------|-----------------|--------|
-| Warning | `blocking: false` | Reported, downstream continues |
-| Error | `blocking: true` | Downstream assets wait and do not run on failure |
-| Critical | `blocking: true` plus a documented escalation step (for example CI fails and the on-call runbook applies) | Run stops and escalation is required |
+**Severity model:** Bruin exposes blocking versus non-blocking for checks, and failed assets block downstream. The course defines its three-level vocabulary on top of that:
 
-**Reusable framework:** a library of parameterized check templates (SQL snippets generated from Jinja or a small Python generator) that learners reuse across assets. A `validation.py` that executes Python checks is **not** assumed to exist in Bruin. Whether Python-based checks are supported must be verified at build time (see the Prompt Guide). If unsupported, the framework uses SQL templates only.
+| Course level | Mechanism | Effect |
+|--------------|-----------|--------|
+| Warning | SQL check with `blocking: false`, or a Python gate rule that logs and records without raising | Recorded and alerted, downstream continues |
+| Error | SQL check with `blocking: true`, or a Python gate rule that raises | Downstream assets do not run |
+| Critical | Error behavior plus a documented escalation step (for example the CI job fails, the alert pages the on-call, and the runbook applies) | Run stops and escalation is required |
 
-**Lab:** apply the framework to every hist and integration asset. Add one warning check and one blocking check per layer.
+**Reusable framework:** `lib/validation.py` plus a library of parameterized SQL check templates. The Python library provides: rule definitions, a severity enum, a runner that records results to `dq_results`, a standard exception that Bruin sees as a failed asset, and helpers for the reconciliation patterns used in Modules 7 to 9.
+
+**Failure handling and alerting patterns:** retries and cooldown settings on assets, quarantine tables for rejected rows, notify-and-continue versus stop-the-line, and alert hooks. Native Bruin notification support appears tied to Bruin Cloud in the documentation; Phase A must confirm what the CLI supports. The default course pattern is CI or scheduler failure notification plus a small alert helper in `lib/` that posts to a webhook when configured and writes to the `dq_results` table either way.
+
+**Operational dashboard:** SQL views over `dq_results` and a `run_log` table (check pass rates, failures by layer, freshness by table, open warnings). The lab builds the views and a plain-text report script. A rendered dashboard is optional and tool-agnostic.
+
+**Lab:** apply the framework to every hist and integration asset. Add one warning and one blocking rule per layer, including at least one Python gate rule. Then break the data with simulator faults and show each severity behaves as designed.
 
 **Unit tests:** introduce `bruin unit-test` (referenced in the CI docs) at a basic level.
 
 ---
 
-# Module 11: Sensors and Data-State Dependencies (3.5 h)
+# Module 11: Sensors, Custom Python Sensors, and Data-State Dependencies (5 h)
 
-**Objectives:** sensor assets, waiting on published data rather than scheduler success, cross-pipeline ordering.
+**Objectives:** native sensor assets, custom Python sensors for generic sources, control and publication tables, waiting on published data rather than scheduler success, cross-pipeline ordering.
 
-**Sensors available** (verified): table and query sensors per platform, for example `duckdb.sensor.query`, `sf.sensor.table`, `sf.sensor.query`. Sensors accept `poke_interval` and `timeout` (default 24 hours). Sensor coverage differs per platform. Custom Python sensors are **not** documented, so the original outline's custom-sensor objective is removed pending verification.
+## Part A: Native sensors (about 1.5 h)
+
+**Verified:** sensors are implemented per platform. For Postgres, the docs list `pg.sensor.table` and `pg.sensor.query`, which poll every 30 seconds by default. DuckDB has `duckdb.sensor.query`. Sensors accept `poke_interval` (seconds) and `timeout` (default 24 hours), and quality checks can run on a sensor after it succeeds. Coverage differs per platform. The course uses Postgres sensors so that a sensor can poll the warehouse while the upstream pipeline is still writing to it, which a single-process DuckDB file does not allow.
 
 **Required dependency chain** (generic names):
 
 ```text
 core-banking-daily
       ↓
-integration.processing_dates
+ctl.processing_dates
       ↓
 banking-integration
       ↓
 customer-mart
 ```
 
-**Why data-state matters**
+**Why data-state matters:** depend on "the data I need is published and valid," not on "the scheduler said success." Benefits: replayability, resilience, failure isolation. A replayed or backfilled date can pass the same gate, and an upstream rerun does not trigger downstream work by accident.
 
-Avoid depending on "the scheduler said success." Depend on "the data I need is published and valid." Benefits: replayability, resilience, failure isolation.
+**Control and publication tables:** `ctl.processing_dates` (one row per business date with status and the run that published it) and `ctl.publication_log` (what was published, row counts, checksums, timestamp). A pipeline's last step publishes to these tables only after its own checks pass. Downstream pipelines wait on them.
 
-**Lab:** build a processing-date sensor that waits until `processing_dates` contains the target date, then releases the downstream pipeline.
+**Lab A:** a native SQL sensor that waits until `ctl.processing_dates` contains the target date with status PUBLISHED, then releases `banking-integration`.
 
-**Open verification item:** cross-pipeline dependency syntax (the `uri` field and `depends` with `uri`) and which behaviors exist in the CLI versus Bruin Cloud. The documentation page for cross-pipeline dependencies could not be retrieved during review. Resolve before writing this module.
+## Part B: Custom Python sensors (about 3 h)
+
+**Why they exist:** pipelines often must run only when conditions in the data are met, and many sources are generic: file drops, vendor feeds, status tables in systems without a Bruin connector, web endpoints, SFTP-style locations. Native sensors cover platform tables and queries. Everything else needs a sensor the team writes.
+
+**Status of the feature:** Bruin documents native sensors per platform and does not document a Python sensor type. The course therefore teaches custom Python sensors as a **design pattern built on documented Python assets**: a Python asset placed in the graph so that downstream assets declare `depends` on it. It succeeds when the condition is met and fails (raises) when it is not met by the timeout, so downstream assets do not run. Phase A confirms the exact failure and blocking behavior, and whether Bruin offers any native hook that improves on this pattern.
+
+**The sensor contract** (implemented once in `lib/sensors.py`):
+
+- `check(run_date) -> Result(ready: bool, observed: dict, reason: str)`: a side-effect-free evaluation of one condition.
+- `poke_interval` and `timeout`, mirroring native sensor parameters, so learners reuse one mental model.
+- Run-date awareness through `BRUIN_START_DATE` and `BRUIN_END_DATE`, so replays and backfills evaluate the right date.
+- A final control-table write recording what was observed (evidence), whether the sensor passed or timed out.
+- Distinct messages for "not ready yet" and "source is broken," so on-call can tell them apart.
+
+**Condition library built in the labs** (all against the Vendor Feed and status table):
+
+| Condition | Example |
+|-----------|---------|
+| Arrival | Today's settlement file exists in the drop folder |
+| Stability | File size and modified time unchanged across two pokes (the file is no longer being written) |
+| Completeness flag | Vendor status row reads COMPLETE for the business date |
+| Row threshold | Row count is at least 95 percent of the trailing 7-day average |
+| Business date | Maximum business date in the file equals the processing date |
+| Integrity | File checksum equals the checksum in the manifest |
+| Composite | Arrival AND stability AND integrity AND completeness |
+| Optional web endpoint | A JSON status document reports ready (uses a recorded fixture offline) |
+
+**Three implementation patterns compared:**
+
+1. **In-process polling gate.** The asset loops, sleeping `poke_interval`, until ready or `timeout`. Simple, one log, but holds a worker while waiting.
+2. **Retry-based gate.** The asset checks once and raises if not ready, relying on Bruin's documented `retries` and `rerun_cooldown` asset settings to re-attempt. No long-held worker, but noisier logs and a retry budget to size.
+3. **Pre-flight gate.** The scheduler or CI job runs the sensor logic first and starts `bruin run` only when it passes. Keeps long waits outside Bruin, at the cost of logic living outside the dependency graph.
+
+Learners build pattern 1, then convert to pattern 2, and then discuss pattern 3 trade-offs. Phase A verifies the behavior of `retries`, `rerun_cooldown`, and `timeout` on Python assets.
+
+**Conditional execution without failing the run:** a gate that fails creates a failed run and an alert, which is correct for "the vendor is late" but noisy for "nothing to do today." The course teaches the options: fail on timeout (stop the line), succeed with a recorded NOT_READY status that a blocking SQL check on the control table turns into a clean stop for downstream assets, or skip through a documented Bruin mechanism if Phase A finds one. The course states clearly which option each scenario should use.
+
+**Design rules taught:** bounded timeouts always, idempotent checks, never mutate the source, never treat "file exists" as "file complete," record evidence, keep secrets in connections or secret injection, test sensor logic as plain Python without running Bruin (the logic lives in `lib/`), and log enough to explain a decision after the fact.
+
+**Labs**
+
+- **Lab B1:** file-arrival sensor with a stability check. Run it while the simulator delays the file, and while it delivers the file in growing chunks.
+- **Lab B2:** data-condition sensor using row threshold plus business date plus checksum.
+- **Lab B3:** wire the Vendor Feed sensor into a pipeline so downstream assets run only after the sensor passes, then prove it: advance the simulator with the file late, observe the wait, release the file, observe the run proceed.
+- **Lab B4:** convert the polling gate to the retry-based gate and compare logs and runtime.
+- **Lab B5:** plain-Python unit tests for every condition in the library.
+
+**Break/fix scenarios**
+
+1. The sensor passes on yesterday's file left in the drop folder (missing business date condition).
+2. The sensor releases on a half-written file (missing stability and integrity conditions).
+3. The sensor has no timeout and blocks a worker indefinitely.
+4. The sensor fails with a stack trace instead of a clear "not ready" message, and on-call cannot tell a late vendor from a bug.
+5. The control table was updated before checks passed, so a downstream pipeline consumed unvalidated data.
+
+**Open verification item:** cross-pipeline dependency syntax (the `uri` field and `depends` with `uri`) and which behaviors exist in the CLI versus Bruin Cloud. The documentation page could not be retrieved during review. Resolve in Phase A before this module is written. If the CLI cannot make a pipeline wait on another pipeline directly, the control-table sensor pattern above is the primary mechanism, which is also the planning prompt's intent.
 
 ---
 
@@ -437,53 +521,64 @@ Avoid depending on "the scheduler said success." Depend on "the data I need is p
 
 ---
 
-# Module 13: The Snowflake Target (3.5 h)
+# Module 13: Cloud Warehouses and Porting (3 h, optional)
 
-Requires a Snowflake trial account. Learners who skip this module continue on DuckDB.
+No outside account is required to complete this module or the course. It teaches what changes when the platform moves from Postgres to a cloud warehouse, using Snowflake as the worked example because Bruin documents it well and many employers use it.
 
-**Objectives:** configure a Snowflake connection, promote the existing project to Snowflake through environments, understand target-specific behavior.
+**Objectives:** understand the differences that matter when porting, and be able to read and adapt a Bruin project for a cloud target.
 
 **Topics**
 
-- Trial account setup and the 30-day clock.
-- Connection fields (`account`, `username`, `database`, `warehouse`, `role`, and `region`, which the docs mark required) and key-pair authentication (generate key, register public key with `ALTER USER ... SET RSA_PUBLIC_KEY`, reference the key path).
-- Environments: `default` on DuckDB, `snowflake-dev` and `snowflake-prod` as separate databases or schemas in one account, so a single trial supports dev and prod.
-- Asset types: `sf.sql`, `sf.seed`, `sf.source`, `sf.sensor.table`, `sf.sensor.query`.
-- Warehouse sizing, auto-suspend, and cost control for a trial.
-- A minimal role model (loader, transformer, reader) as an introduction to RBAC **[Advanced]**.
-- Dialect differences that bite when moving from DuckDB (identifier case, date functions, `QUALIFY`, semi-structured types).
+- Connection configuration shape for a cloud warehouse (account, user, database, warehouse, role, region) and key-pair authentication concepts.
+- Environments mapped to databases or schemas, and how `default`, `staging`, and `production` translate.
+- Asset types per platform (`sf.sql`, `sf.seed`, `sf.source`, `sf.sensor.table`, `sf.sensor.query`) and the materialization support Bruin documents for Snowflake (including `merge`, `scd2_by_column`, and `scd2_by_time`).
+- Compute and cost: virtual warehouses, auto-suspend, credit budgeting, and why a retry loop in a sensor can be expensive.
+- RBAC translation: Postgres roles and grants compared with Snowflake roles, grants, and role hierarchy **[Advanced]**.
+- Dialect differences: identifier case, date functions, `QUALIFY`, semi-structured types, sequences, and procedural code.
 
-**Lab:** run the full pipeline on Snowflake by changing only the environment flag. Fix the dialect differences found. Compare row counts between targets.
+**Labs (no account needed)**
 
-**Break/fix:** wrong role lacking privileges, then an expired or mismatched key.
+- **Dialect worksheet:** translate ten of the course's SQL assets to Snowflake dialect. A checker compares against the answer key and flags unsupported constructs.
+- **Port plan:** write a one-page port plan for the Lakota Bank platform covering connections, environments, roles, materialization changes, cost controls, and a cutover and rollback approach.
+- **Read the config:** given a sample cloud-warehouse `.bruin.yml` and a project, identify the five mistakes that would fail `bruin validate` or a run.
+
+**Optional bring-your-own-account lab (later release):** a learner with their own warehouse account runs a pipeline against it from the environment. This requires outbound network access to that provider and careful handling of private keys, so it is off by default and tracked as a post-launch feature in the platform spec.
+
+**Break/fix:** a project ported with Postgres-only syntax in a Snowflake-targeted asset.
 
 ---
 
 # Module 14: Git-Based Deployment (3 h)
 
-**Objectives:** branching, pull requests, environment promotion, CI gates, scheduled runs.
+**Objectives:** branching, pull requests and code review, environment promotion, release management, rollback, CI gates, scheduled runs.
 
 **Reference flow**
 
 ```text
-feature/*  →  pull request  →  main  →  (tag or promotion)  →  production
+feature/*  →  review  →  main  →  staging  →  production
 ```
 
-The course recommends trunk-based flow with environment promotion rather than long-lived `staging` and `production` branches, because separate branches for each environment drift. A branch-per-environment variant appears in an appendix for teams that require it.
+The course recommends trunk-based flow with environment promotion rather than long-lived `staging` and `production` branches, because separate branches for each environment drift. A branch-per-environment variant appears in an appendix.
 
-**CI with GitHub Actions** (documented setup action: `bruin-data/setup-bruin`):
+**Built-in CI in the environment:** `make ci` runs the same sequence a hosted CI system would:
 
 ```text
-validate  →  unit-test  →  run in staging  →  run in production (manual approval)
+bruin validate  →  bruin unit-test  →  run in staging database  →  run checks  →  promote to production database
 ```
 
-**Credentials in CI:** `.bruin.yml` is generated at job time from repository secrets, never committed.
+Promotion targets are separate Postgres databases (`wh_staging`, `wh_prod`) selected through Bruin environments. Credentials stay in the environment's `.bruin.yml`, which is never committed.
 
-**Scheduled runs:** a GitHub Actions `schedule` trigger runs the pipeline on a cron, demonstrating how a Bruin schedule is realized without a built-in scheduler.
+**Pull request review without a forge:** the environment includes a local `origin` and a review exercise pack. Learners review provided diffs against a checklist, then submit their own change for an automated review (the self-check applies the checklist rules).
 
-**Local-only path:** learners without GitHub simulate promotion with local branches and a `./promote` script that runs the same validate, test, and run steps.
+**Code review checklist for data platforms:** `bruin validate` and `bruin unit-test` pass, lineage change reviewed, materialization and key changes called out, new checks and severity levels justified, backfill impact stated, sensors have bounded timeouts, no secrets in the diff.
 
-**Appendices:** Gitea Actions and GitLab CI equivalents. These may require self-hosting and runners and are therefore optional.
+**Release management:** version tags, a changelog, and a release note that states which tables change shape and whether a backfill is required.
+
+**Rollback strategies:** Git revert and redeploy; rebuild affected layers from `_hist` (Module 12); restore a database from a snapshot or template clone taken before the release; restore a table from history using a pinned run date. Each strategy states what it can and cannot undo, and a lab practices a bad deploy followed by rollback.
+
+**Real orchestration (reading and optional lab):** Bruin's docs describe a GitHub Actions setup action (`bruin-data/setup-bruin`) and external schedulers such as Airflow. The optional lab uses the learner's own GitHub account and requires outbound access to GitHub from the environment (off by default, allowlisted when enabled). The lab converts the `make ci` flow into a workflow with a `schedule` trigger.
+
+**Appendices:** Gitea Actions and GitLab CI equivalents.
 
 ---
 
@@ -493,11 +588,13 @@ validate  →  unit-test  →  run in staging  →  run in production (manual ap
 
 **Activities**
 
-- Monitoring: pipeline health, data freshness (custom check), SLA compliance (measured from run logs and freshness checks, since the CLI has no built-in scheduler or SLA dashboard).
-- Incident response loop: triage, diagnose, fix, deploy, backfill, document.
-- Runbook and post-incident write-up templates.
+- Monitoring: pipeline health, data freshness (custom check), SLA compliance (measured from run logs, sensor evidence, and freshness checks, since the CLI has no built-in scheduler or SLA dashboard).
+- Operational dashboard: extend the Module 10 views (`dq_results`, `run_log`) with sensor wait times, publication latency per business date, and open warnings. Delivered as SQL views plus a text report.
+- Alerting: route Warning, Error, and Critical to different channels using the alert helper from Module 10, with a rule that every alert names the asset, the business date, the evidence, and the runbook step.
+- Incident response loop: triage, diagnose (lineage and run logs), fix, deploy, backfill, document, and root cause analysis.
+- Runbook and post-incident write-up templates, including a "late vendor feed" runbook that uses sensor evidence.
 
-**Lab:** complete incident simulation using the simulator's fault switches (a late source, a failing blocking check, a bad deploy). Output: a fixed platform, a completed backfill, and a short post-incident report.
+**Lab:** complete incident simulation using the simulator's fault switches (a late Vendor Feed that times out a sensor, a failing blocking check, a bad deploy). Output: a fixed platform, a completed backfill, a rollback demonstration, and a short post-incident report.
 
 ---
 
@@ -516,7 +613,7 @@ validate  →  unit-test  →  run in staging  →  run in production (manual ap
 - Git deployment with a CI gate.
 - Operations: a short runbook and one incident drill.
 
-**Targets:** DuckDB (default) or Snowflake (full path).
+**Target:** Postgres. The optional Module 13 port plan can be extended to the capstone for extra credit.
 
 **Automated acceptance:** a `capstone-check` suite (Bruin checks plus validation queries) verifies structure, row counts, SCD2 integrity, and recoverability, so learners can self-grade. Rubric items that need judgment (architecture, documentation) use a published checklist.
 
@@ -547,10 +644,10 @@ Each module ships `starter` and `solution` Git tags so a learner who falls behin
 
 # Fast-Track Options
 
-**Fast-Track A: Engineer Productivity** (about 32 h)
+**Fast-Track A: Engineer Productivity** (about 34 h)
 Modules 0, 1, 2, 3, 4, 6, 9, 10, 11, 12.
 
-**Fast-Track B: Architect / Lead** (about 41 h)
+**Fast-Track B: Architect / Lead** (about 42.5 h)
 Modules 0, 1, 4, 5, 7, 8 (overview), 9, 10, 11, 12, 13, 14, 15. Emphasis on dependency design, data-state contracts, governance, recovery, deployment, and operations.
 
 Hours recomputed from the module table above; recheck when module durations change.
@@ -560,20 +657,47 @@ Hours recomputed from the module table above; recheck when module durations chan
 # Accessibility and Inclusion Standards
 
 - Text-first lessons in Markdown. No video required for any lab.
-- Every command shown for Git Bash/Linux/macOS. Windows differences called out inline.
+- One environment for everyone: the same commands, the same results, no operating-system differences to manage.
 - Plain language, defined terms on first use, and a glossary.
 - No meaning conveyed by color alone in diagrams; diagrams have text equivalents.
-- Time estimates per section and clear stopping points.
-- Offline-capable after installation (simulator, fixtures, DuckDB).
+- Time estimates per section and clear stopping points. Work persists between sessions and can be exported.
+- Every lab runs inside the environment with no outside service.
 - No real personal or financial data anywhere.
-- Free by default. Costs and trial limits stated before they apply.
+- Pricing, monthly hour limits, and idle timeouts stated before purchase. No hidden costs inside the course.
+
+---
+
+# Asset Type Coverage Matrix
+
+The planning prompt requires, for each asset type: purpose, configuration, execution lifecycle, production examples, and troubleshooting. Every lesson on an asset type includes all five. This matrix says where each is taught.
+
+| Asset type | Status in Bruin | Taught in | Course example |
+|------------|-----------------|-----------|----------------|
+| Seed (`*.seed`) | Native | Modules 1, 2 | Branches, products, FX fixture |
+| ingestr | Native | Module 2 | SQLite and CSV sources into landing |
+| SQL (`*.sql`) | Native | Modules 3, 7, 8, 9 | Hist, integration, SCD2, marts |
+| Python | Native | Module 6 | FX rates fetch |
+| Source (`*.source`) | Native, documents existing tables | Module 3 | Documenting simulator tables |
+| Native sensor (`*.sensor.*`) | Native, per platform | Module 11 Part A | Processing-date sensor |
+| Custom Python sensor | Course pattern on Python assets | Module 11 Part B | Vendor Feed gate |
+| Python quality gate | Course pattern on Python assets | Module 10 | Reconciliation and drift checks |
+| Column and custom SQL checks | Native | Module 10 | Every layer |
+| DDL strategy (`ddl`) | Native materialization | Module 3 | Control tables |
+
+Additional asset types relevant to enterprise work (for example other platform-specific asset types) are surveyed in Module 5 from the docs index, with at most one short example each.
+
+---
+
+# Other Deliverables From the Planning Prompt
+
+Each module ships these alongside the lesson, lab, and break/fix files (see the Prompt Guide for the file layout): learning objectives, estimated duration, instructor notes, hands-on labs with expected outputs and validation steps, knowledge checks and quizzes, a common mistakes and troubleshooting guide, and a reading list. The course repository also ships a suggested repository structure and a suggested Bruin project structure, both in the Prompt Guide, and a fast-track option (above).
 
 ---
 
 # Recommended References
 
 **Bruin:** official Bruin documentation (CLI, assets, materialization, sensors, quality checks, backfill).
-**Snowflake:** Snowflake documentation, trial account guide, key-pair authentication guide.
+**Postgres:** PostgreSQL documentation (roles, privileges, template databases). **Cloud warehouses (optional):** Snowflake documentation for Module 13. **Official free Bruin content:** Bruin Academy, as complementary reading.
 **Git:** Pro Git (free online).
 **Data engineering:** The Data Warehouse Toolkit (optional, the course is self-contained), DataTalksClub Data Engineering Zoomcamp.
 
@@ -586,38 +710,49 @@ Learners will be able to:
 1. Design Bruin project structures.
 2. Build multi-pipeline solutions.
 3. Implement asset and cross-pipeline dependencies.
-4. Build SQL, Python, seed, ingestr, and sensor assets.
-5. Build data quality controls and a reusable check library.
-6. Debug failures from logs and checks.
-7. Execute backfills and reconstruct history.
-8. Implement SCD2 processing.
-9. Analyze lineage.
-10. Deploy through Git workflows with CI gates.
-11. Promote a project from a local target to Snowflake.
-12. Operate and support a Bruin platform in production.
+4. Build SQL, Python, seed, ingestr, and native sensor assets.
+5. Build custom Python sensors for generic sources with no Bruin connector, so pipelines run only when conditions in the data are met.
+6. Build data quality controls and a reusable check library.
+7. Debug failures from logs and checks.
+8. Execute backfills and reconstruct history.
+9. Implement SCD2 processing.
+10. Analyze lineage.
+11. Deploy through Git workflows with CI gates.
+12. Describe and plan the port of a Bruin project to a cloud warehouse.
+13. Operate and support a Bruin platform in production.
 
 ---
 
 # Appendix A: Platform Facts and Verification Status
 
-Verified means read in the official Bruin or Snowflake documentation on 2026-10-05. Items marked Verify must be confirmed hands-on before the related module is written.
+Verified means read in the official Bruin, PostgreSQL, or vendor documentation on 2026-10-05 (through a summarizing fetch tool, so spot-check load-bearing items against the raw page or by running them). Items marked Verify must be confirmed hands-on before the related module is written.
+
+Claude is expected to close these items itself. Each Verify row becomes an entry in `docs/knowledge/VERIFIED_FACTS.md` (with evidence, method, version, and date), `ASSUMPTIONS.md`, or `OPEN_QUESTIONS.md` if it cannot be resolved, following `Master_Execution_Guide.md` sections 4 and 5. If the research changes the course design, record an ADR and propose the outline edit to the author. This table is a starting list. Research may uncover items that belong here, and Claude adds them in a proposed patch.
 
 | Claim | Status |
 |-------|--------|
-| Bruin installs with one command on macOS, Linux, Windows (Git Bash or WSL); Git required; Docker not required | Verified |
-| Python assets run in uv-managed isolated environments, no local Python needed | Verified |
-| Materialization strategies listed in Module 3, with scd2 support on Snowflake and DuckDB | Verified |
+| Python assets run in uv-managed isolated environments | Verified |
+| Materialization strategies listed in Module 3; `merge`, `scd2_by_column`, `scd2_by_time` and Data Vault strategies documented for Postgres and DuckDB | Verified |
+| Postgres connection fields and asset types `pg.sql`, `pg.seed`, `pg.sensor.table`, `pg.sensor.query`, `pg.source` | Verified |
+| Postgres sensors poll every 30 seconds by default | Verified |
+| Postgres CDC through ingestr needs `wal_level: logical`, a publication, and a replication slot | Verified (optional **[Advanced]** topic, requires Postgres configuration in the environment) |
+| DuckDB does not allow concurrency between processes | Verified |
 | Ten built-in column checks; custom SQL checks with `blocking` flag | Verified |
-| Sensors exist for Snowflake and DuckDB (`sf.sensor.*`, `duckdb.sensor.query`) | Verified |
+| Sensors are per platform; docs show no Python, file, or HTTP sensor | Verified |
 | `bruin backfill` is CLI-local and resumable | Verified |
 | No built-in scheduler in the CLI | Verified (docs describe external orchestration) |
 | GitHub Actions setup action `bruin-data/setup-bruin`; `bruin validate`, `bruin unit-test` | Verified |
 | ingestr supports `sqlite://` and `csv://` sources | Verified |
-| Snowflake trial: 30 days or until credits are used, no credit card, suspended at expiry | Verified |
-| Ingestr assets run without Docker on a clean Windows, macOS, and Linux machine | Verify |
+| `CREATE DATABASE ... TEMPLATE` clones a database but fails if any other session is connected to the template; database-level grants are not copied | Verified (PostgreSQL docs) |
+| The Bruin VS Code extension is installed from the VS Code Marketplace | Verified (Bruin Academy install guide) |
+| The Bruin extension is installable in a hosted open-source VS Code server (Open VSX or `.vsix`) | Verify |
+| Ingestr Postgres-to-Postgres incremental loads on `updated_at` inside one environment | Verify |
 | Cross-pipeline dependency syntax and CLI versus Cloud behavior | Verify |
-| Python-based custom checks or custom Python sensors | Verify (not documented; assume absent) |
-| Daily-partitioned file or SQLite extracts through ingestr with run-date templating | Verify |
-| Snowflake sign-in rules for new trial accounts (MFA, key-pair, tokens) | Verify |
-| Free live FX endpoint availability and terms | Verify |
-| Hosted browser workspace compatibility | Verify |
+| Custom Python sensors as Python assets that fail on timeout and block downstream | Verify (not documented as a feature; pattern relies on documented Python asset and dependency behavior) |
+| Python quality-gate asset blocks downstream when it raises | Verify |
+| `retries`, `rerun_cooldown`, and `timeout` behavior on Python assets | Verify (fields documented, Python-asset behavior not) |
+| A documented way for a gate to skip downstream cleanly without failing the run | Verify |
+| Native alerting available in the CLI (versus Bruin Cloud notifications) | Verify |
+| Raw file archive plus load mechanism for daily extracts | Verify |
+| `bruin validate` on a project configured for a platform the environment cannot reach (for Module 13 labs) | Verify |
+| Optional real FX endpoint availability and terms | Verify |
