@@ -2,7 +2,7 @@
 
 Review of `Course_Curriculum_Outline.md` (v1) against the current Bruin and Snowflake documentation, dated 2026-10-05. Findings are ordered by impact.
 
-Revision 3 (same day) changes the delivery model. See "Revision 3: hosted, paid, Postgres-first" below.
+Revision 5 (2026-10-06) reverses revision 3's delivery model for Stage 1: a manual, self-guided course with a bring-your-own database. See "Revision 5" below. Revision 3 (same day as the first review) changed the delivery model to hosted, paid, Postgres-first; that design is shelved as Stage 2.
 
 Revision 2 (same day): after reading `Curriculum_Planning_Prompt.md`, the original requirements document, findings 6 and 11 were corrected and the section "Corrections after reading the planning prompt" was added.
 
@@ -69,9 +69,35 @@ Things I found while researching this revision that you should weigh:
 - **Postgres resets.** `CREATE DATABASE ... TEMPLATE` fails if any other session is connected to the template, so the reset flow must terminate sessions first.
 - **Module 14.** It cannot be fully self-contained if learners want real CI. The built-in `make ci` covers the concepts, and the real CI lab stays optional.
 
+## Revision 5: Stage 1, manual self-guided course (2026-10-06)
+
+Decisions by the course author:
+
+- First build a good, self-guided curriculum that experienced engineers (the author and trusted colleagues) follow manually. The hosted platform comes later, after the curriculum has been trialed.
+- Bring your own database. Postgres is the reference target, with a link to an easy Postgres container as an optional convenience. Any Bruin-supported target is allowed except DuckDB (Snowflake, SQL Server, MySQL, and others).
+- The goal is to make engineers Bruin experts.
+
+What I changed and why:
+
+- **Outline v4.0.** Module 0 became setup and orientation. The environment contract (section 1.3) replaces the hosted environment description, so the content does not depend on how the environment is delivered and a hosted version can supply the same contract later. All DuckDB warehouse uses were removed. DuckDB stays out because Bruin documents no concurrency between processes.
+- **Compatibility notes per module.** Bruin behavior differs by platform (sensors are per platform, materialization support varies, Data Vault strategies are Postgres and DuckDB only, dialects differ). Supporting any target multiplies verification work, so the course verifies Postgres fully, builds a capability matrix from the docs for other targets, marks them best effort, and verifies Snowflake first in Phase H.
+- **Expert standard.** Every module has an Expert track. A feature inventory of the pinned Bruin version maps every command, flag, asset type, and YAML key to a lesson and a lab, so coverage can be checked. New Module 17 adds internals, performance, governance, and a timed assessment on an unfamiliar domain ("Prairie Insurance").
+- **Safety.** Labs drop and create objects in the learner's own database. The course CLI refuses destructive actions against a database with non-course objects, and the setup guide requires a dedicated empty database.
+- **Cross-platform.** Engineers at banks often use Windows with PowerShell. Commands are shown in bash and PowerShell, and the course CLI runs through uv instead of make. Claude can only verify Linux. Windows and macOS are verified through scripts that you or testers run.
+- **Trial built in.** Phase G defines how testers work through a thin slice (Modules 0 to 3) first, report timings and problems through `course report`, and how the feedback is triaged. The slice goes to testers before the rest is built.
+- **Docs.** The master guide and prerequisites were rewritten for one repository and Stage 1. Platform items moved to a shelved list. The platform spec moved to `planning/` with a banner listing what must be updated before it is used.
+
+Things to weigh:
+
+- The employer and IP question is more pressing now that colleagues will see the material. See the prerequisites checklist, item P10.
+- Corporate Windows laptops often block installs. Testers may need a personal machine or a VM.
+- Best-effort support for other targets means testers on those targets will find gaps. That is useful information, and the course should say so plainly.
+- Time estimates are guesses until a trial supplies data. Phase G updates them.
+- The ingestr license question matters less for a private trial among colleagues and more before any paid or public release (P12).
+
 ## Revision 4: execution process and prerequisites
 
-Added `Master_Execution_Guide.md` and `Prerequisites_Checklist.md`, and patched the master prompts in `Course_Build_Prompt_Guide.md` and `Hosted_Platform_Build_Spec.md`, plus the outline's Appendix A intro.
+Added `Master_Execution_Guide.md` and `Prerequisites_Checklist.md`, and patched the master prompts in `Course_Build_Prompt_Guide.md` and `Hosted_Platform_Build_Spec.md`, plus the outline's Appendix A intro. Revision 5 rewrote these documents for Stage 1. The points below still hold.
 
 - Claude is now told to investigate gaps, research, and write its own knowledge and data files (`docs/knowledge/`, `docs/adr/`, `docs/data/`, `docs/spike/`) without asking, and to ask only for Tier 3 decisions.
 - Durable memory lives in version-controlled files, not in chat or auto memory, so you can review and correct it. Each session starts from `SESSION_HANDOFF.md` and ends by overwriting it.

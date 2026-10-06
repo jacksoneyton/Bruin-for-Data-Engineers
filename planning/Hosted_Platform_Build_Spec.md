@@ -1,3 +1,5 @@
+> **SHELVED (2026-10-06).** This is the Stage 2 specification for a hosted, browser-delivered version of the course. It was written against outline v3.0 (hosted only, Postgres inside the workspace, no learner installs). Stage 1 is now a manual, self-guided course with a bring-your-own database, defined in `Course_Curriculum_Outline.md` v4.0. Do not build from this document until Stage 2 is reopened under `Master_Execution_Guide.md` section 14. Known mismatches to fix at that point: the workspace must supply the Stage 1 environment contract (outline section 1.3), the course CLI replaces the platform's reset and check hooks, `make` targets are replaced by `uv run course ...`, DuckDB is no longer a learner-facing engine, and Module 0 is a setup module that a hosted image would pre-satisfy.
+
 # Hosted Platform Build Spec
 
 Specification for building the paid, browser-based learning platform that delivers "Bruin for Data Engineers" (`Course_Curriculum_Outline.md` v3.0). Written for Claude Code. Version 1.0, 2026-10-05.
