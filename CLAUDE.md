@@ -1,22 +1,19 @@
 # Bruin for Data Engineers
 
-A self-guided course that experienced engineers follow manually against a database they choose. Goal: make them Bruin experts. Stage 1 only. The hosted platform is shelved in `planning/`.
-
-Start here: `Master_Execution_Guide.md`. It defines how every session runs: plan first and wait for approval, research gaps and record findings in `docs/knowledge/`, decision tiers (stop and ask for money, legal, real databases, sharing, third-party contact, destructive actions, requirement changes), end-of-session handoff, and commit without pushing.
+A self-guided course (13 modules) that makes experienced data engineers Bruin experts. Learners work manually against their own Postgres, using synthetic data from a fictional bank (Lakota Bank).
 
 Read order:
 1. `Curriculum_Planning_Prompt.md` (original requirements, highest authority)
-2. `Master_Execution_Guide.md`
-3. `Prerequisites_Checklist.md` (run its preflight, report missing items)
-4. `Course_Curriculum_Outline.md` (v4.0), only the sections the phase needs
-5. `Course_Build_Prompt_Guide.md` for phases A to I
-6. `Curriculum_Review_Notes.md` for revision history
-7. `planning/Hosted_Platform_Build_Spec.md` only if Stage 2 is reopened
+2. `course/README.md` (the course index and conventions)
+3. The module being changed in `course/modules/`
+4. `planning/` only for history. Those documents are shelved and do not govern the course.
 
-Hard constraints: manual self-guided course; bring your own database with Postgres as the reference; DuckDB is not a supported target; Docker is never required; labs run only against the dedicated test database named below; every Bruin claim is verified and recorded; custom Python sensors and checks are labeled course patterns; synthetic data and the fictional Lakota Bank only.
+Rules for editing lessons:
+- Every Bruin claim comes from the official docs for the pinned version (v0.11.773). Cite the docs page. If the docs do not settle something, mark it UNVERIFIED and add a row to the module's validation log.
+- Course patterns that are not Bruin features (marker tables, polling wrapper, custom Python sensors, alert wrapper) are labeled as such.
+- Keep expected numbers consistent with the data in `course/data`. If you change the generator in `course/tools/make_data.py`, recompute every number in the modules.
+- Labs run only in the databases `bruin_course` and `bruin_course_src`. Never add steps that touch other databases.
+- No DuckDB as a target. No Docker as a requirement.
 
-Dedicated test database: [name only, no credentials; fill in during setup]
-Bruin version: [pin in BRUIN_VERSION]
-
-Style: no emojis, no em dashes, no filler openers, plain and direct. Markdown for documents. Commands in bash and PowerShell.
-Never read or write secrets. Never push without explicit instruction. Keep this file under about 200 lines.
+Style: no emojis, no em dashes, no filler openers, plain and direct. Markdown for documents. Commands for bash (Git Bash on Windows).
+Never read or write secrets. Never push without being asked.

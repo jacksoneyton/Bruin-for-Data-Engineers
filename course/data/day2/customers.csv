@@ -1,0 +1,14 @@
+customer_id,first_name,last_name,email,branch_id,status,created_at,updated_at
+61,Jonah,Dahl,jonah.dahl61@example.test,4,ACTIVE,2026-01-03 08:49:21,2026-01-03 08:49:21
+62,Frank,Zimmer,frank.zimmer62@example.test,3,ACTIVE,2026-01-03 08:51:55,2026-01-03 08:51:55
+63,Carla,Gomez,carla.gomez63@example.test,8,ACTIVE,2026-01-03 08:36:48,2026-01-03 08:36:48
+64,Kai,Eagle,kai.eagle64@example.test,2,ACTIVE,2026-01-03 08:43:52,2026-01-03 08:43:52
+65,Zane,Gomez,zane.gomez65@example.test,4,ACTIVE,2026-01-03 08:58:20,2026-01-03 08:58:20
+66,Sam,Haugen,sam.haugen66@example.test,8,ACTIVE,2026-01-03 08:01:14,2026-01-03 08:01:14
+67,Sam,Walker,sam.walker67@example.test,2,ACTIVE,2026-01-03 08:04:59,2026-01-03 08:04:59
+68,Ines,Moreau,ines.moreau68@example.test,2,ACTIVE,2026-01-03 08:00:50,2026-01-03 08:00:50
+18,Kai,Gomez,kai.gomez18.day2@example.test,8,ACTIVE,2024-07-25 09:29:47,2026-01-03 10:11:12
+11,Priya,Thorne,priya.thorne11.day2@example.test,3,ACTIVE,2024-10-09 09:46:21,2026-01-03 10:00:12
+17,Tara,Young,tara.young17.day2@example.test,7,ACTIVE,2025-06-25 09:43:32,2026-01-03 08:55:12
+47,Lena,Larson,lena.larson47.day2@example.test,1,ACTIVE,2024-03-09 09:01:59,2026-01-03 10:43:12
+43,Wren,Patel,wren.patel43.day2@example.test,1,ACTIVE,2024-12-20 09:05:22,2026-01-03 10:30:12

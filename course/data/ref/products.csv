@@ -1,0 +1,7 @@
+product_code,product_name,product_type,interest_rate
+CHK-BASIC,Basic Checking,CHECKING,0.0000
+CHK-PLUS,Plus Checking,CHECKING,0.0010
+SAV-STD,Standard Savings,SAVINGS,0.0150
+SAV-HY,High Yield Savings,SAVINGS,0.0400
+LN-AUTO,Auto Loan,LOAN,0.0690
+LN-HOME,Home Loan,LOAN,0.0610
