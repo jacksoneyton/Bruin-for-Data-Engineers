@@ -245,6 +245,8 @@ bruin run lakota/assets/ctl/run_audit.sql --environment prd
 
 Answer `no` to any confirmation. Record which names produce a prompt. Then test `--force` on the one that prompts. For a scheduled job, which flag do you pass? Is it acceptable to pass `--force` from a scheduler, and what compensating controls do you want (separate credentials, `full_refresh_restricted`, code review)?
 
+Result from the course author's reviewer (Bruin v0.11.773, Postgres): an environment named `prod` is treated as production. Running against it asks for confirmation, and `--force` suppresses the prompt. VERIFIED for `prod` only. `production` and `prd` have not been reported, so the rule behind the name check (exact names, a substring such as "prod", or something else) is still UNVERIFIED. Test the names your own environments use before relying on the prompt as a safety control, and record the result.
+
 ### Environment-wide full refresh protection
 
 In `.bruin.yml`, add to the `production` environment:
@@ -337,6 +339,6 @@ Environments change connections, schema prefixes and the restriction above. They
 | 10.5 `secrets:` and `inject_as`; SQL cannot see secrets | | |
 | 10.6 backend table and secrets drafted | | |
 | 10.7 timings: 4 workers / 1 worker / limit 2 / limit 1 | | |
-| 10.8 which environment names prompt for confirmation | | |
-| 10.8 `--force` and environment-level restriction | | |
+| 10.8 which environment names prompt for confirmation (`prod` prompts, verified by the author's reviewer; test `production`, `prd` and your own names) | | |
+| 10.8 `--force` suppresses the prompt (verified for `prod`) and environment-level restriction | | |
 | Time taken | | |
