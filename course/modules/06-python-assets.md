@@ -11,12 +11,12 @@ Docs for this module: `assets/python.md`, `assets/python-sdk.md`, `variables/bui
 ## 6.1 Concepts
 
 - A Python asset is a `.py` file. The definition sits in a docstring block between `"""@bruin` and `@bruin"""` at the top of the file.
-- Bruin runs it with uv in an isolated environment and picks the Python version from `image: python:3.12`. You do not need a system Python (`assets/python.md`).
-- Dependencies come from the closest `requirements.txt` or `pyproject.toml` found by walking up from the asset's folder to the repository root. If both exist in the search path, `requirements.txt` wins. `pyproject.toml` with a committed `uv.lock` is the recommended form.
+- Bruin runs it with uv in an isolated environment. The Python version is 3.11 unless the asset sets `image: python:X.Y`. When both `image` and `requires-python` are present, `image` wins (v0.11.773 source, `pkg/python/uv.go`; `assets/python.md`). You do not need a system Python. Bruin downloads uv into `~/.bruin` on the first Python run when it is missing.
+- Dependencies come from the closest `requirements.txt` or `pyproject.toml` found by walking up from the asset's folder to the repository root. If both exist in the search path, `requirements.txt` wins. `pyproject.toml` with a committed `uv.lock` is the recommended form. When Bruin runs an asset in `pyproject.toml` mode it runs `uv lock` first, so the lockfile appears on a normal run (v0.11.773 source).
 - **Plain scripts** run and exit. A non-zero exit fails the asset.
 - **Materialized assets** define `materialization` (table only, strategies `create+replace`, `append`, `merge`, `delete+insert`) and a `connection`, and implement `materialize()` that returns a dataframe, a PyArrow table, a list of dicts, or a generator yielding dicts or tables. Bruin writes the result to the destination through ingestr. `time_interval` is not supported for Python assets. If `materialize()` returns `None`, Bruin skips materialization with a warning.
 - Built-in values arrive as `BRUIN_*` environment variables (`BRUIN_START_DATE`, `BRUIN_END_DATE`, `BRUIN_RUN_ID`, `BRUIN_FULL_REFRESH`, `BRUIN_VARS`, and others).
-- Connections reach the script through `secrets` or the asset's `connection`, as JSON in an environment variable.
+- Connections reach the script through `secrets` or the asset's `connection`, as JSON in an environment variable. The asset's own `connection` is injected as a secret automatically, under the connection name (v0.11.773 source).
 - The **Python SDK** (`bruin-sdk`) wraps all of that: `context` for typed run values, `query()` for SQL, `get_connection()` for typed clients.
 
 ## 6.2 Lab: a plain script and the environment
@@ -41,8 +41,8 @@ Run it twice, once with a window and once with a full refresh:
 
 ```bash
 cd ~/lakota-bruin
-bruin run lakota/assets/ops/env_probe.py --start-date 2026-01-03 --end-date 2026-01-04
-bruin run lakota/assets/ops/env_probe.py --full-refresh --start-date 2026-01-03 --end-date 2026-01-04
+bruin run lakota/assets/ops/env_probe.py --start-date 2026-01-03 --end-date "2026-01-04 23:59:59.999999"
+bruin run lakota/assets/ops/env_probe.py --full-refresh --start-date 2026-01-03 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 Record:
@@ -51,7 +51,7 @@ Record:
 - the values of `BRUIN_START_DATE`, `BRUIN_END_DATE`, `BRUIN_FULL_REFRESH`, `BRUIN_PIPELINE`, `BRUIN_RUN_ID`,
 - anything printed about Python version or downloads.
 
-On Windows, watch for uv or Python download prompts. The `--exp-use-winget-for-uv` flag is documented as an experimental way to let Bruin install uv through PowerShell. UNVERIFIED: whether you need it. Do not use it unless uv is missing.
+On Windows, watch for uv or Python download prompts. Bruin installs uv itself on the first Python run, so you do not install it by hand. `run` also accepts `--exp-use-winget-for-uv`, but in v0.11.773 the flag is set and never read, so it changes nothing. Do not use it. The first `run` that touches Python also appends `__pycache__/` and `*.py[cod]` to `.gitignore` for you.
 
 ## 6.3 Lab: dependencies with `pyproject.toml`
 
@@ -68,13 +68,18 @@ dependencies = [
 ]
 ```
 
-Lock the environment for one asset (the docs give this command):
+Run the probe. Bruin runs `uv lock` before the asset, so a normal run creates `lakota/uv.lock`:
 
 ```bash
-bruin internal lock-asset-dependencies lakota/assets/ops/env_probe.py
+bruin run lakota/assets/ops/env_probe.py --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
+git status --short
 ```
 
-Check that `lakota/uv.lock` exists and commit both files. Rerun the probe and compare the run time. Where does the cache live? The docs say cached virtualenvs sit under `~/.bruin` and that `bruin clean` removes them and the `logs` folder. UNVERIFIED: whether that command removes your lockfile (it should not).
+Commit `pyproject.toml` and `uv.lock`. Rerun the probe and compare the run time. If `git status` shows a `.venv` folder under `lakota/`, add `lakota/.venv/` to `.gitignore`. UNVERIFIED: whether v0.11.773 creates one in this mode. Record what you see.
+
+`bruin internal lock-asset-dependencies lakota/assets/ops/env_probe.py` locks dependencies without running the asset. It is an internal command, and you need it only when you want the lockfile before the first run (for example in CI).
+
+Where does the cache live? Cached virtualenvs sit under `~/.bruin`. `bruin clean` removes that folder and the `logs/*.log` files (`commands/clean.md`, `cmd/clean.go`). It does not touch `uv.lock`, because the lockfile lives in your repository.
 
 ## 6.4 Lab: SDK basics and a plain script that writes
 
@@ -107,7 +112,7 @@ print(df.to_string(index=False))
 ```
 
 ```bash
-bruin run lakota/assets/ops/window_report.py --start-date 2026-01-03 --end-date 2026-01-04
+bruin run lakota/assets/ops/window_report.py --start-date 2026-01-03 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 Expected: two rows, 2026-01-03 with 90 and 2026-01-04 with 85, if the warehouse is at day 3.
@@ -148,7 +153,7 @@ print("audit row written for run", context.run_id)
 Run the full pipeline for day 3 and check:
 
 ```bash
-bruin run lakota --exclude-tag landing --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota --exclude-tag landing --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 bruin query --connection lakota-pg --query "select * from ctl.run_audit order by finished_at desc limit 3"
 ```
 
@@ -191,7 +196,7 @@ def materialize():
 
 ```bash
 bruin validate lakota
-bruin run lakota/assets/ref/calendar.py --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota/assets/ref/calendar.py --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 bruin query --connection lakota-pg --query "select count(*), min(cal_date), max(cal_date), sum(is_weekend::int) from ref.calendar"
 ```
 
@@ -234,11 +239,11 @@ print("report_label:", context.vars["report_label"])
 ```
 
 ```bash
-bruin run lakota/assets/ops/vars_probe.py --start-date 2026-01-04 --end-date 2026-01-04
-bruin run lakota/assets/ops/vars_probe.py --var min_txn_amount=100 --var report_label='"weekly"' --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota/assets/ops/vars_probe.py --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
+bruin run lakota/assets/ops/vars_probe.py --var min_txn_amount=100 --var report_label='"weekly"' --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
-The docs show string overrides in JSON quoting (`'"prod"'`). Record what happens with an unquoted string, and whether the type of `min_txn_amount` stays numeric. The docs say the same variables are available in SQL through `{{ var.report_label }}` (Module 7).
+The docs show string overrides in JSON quoting (`'"prod"'`). Bruin parses each `--var` value as JSON (`key=value`, or a whole JSON object), so integers stay integers and an unquoted string such as `report_label=weekly` fails to parse (v0.11.773 source, `parseVariable` in `cmd/run.go`). Run the unquoted form and record the error text, and confirm that the type of `min_txn_amount` prints as `int`. The docs say the same variables are available in SQL through `{{ var.report_label }}` (Module 7).
 
 ## 6.7 Lab: connection credentials as secrets
 
@@ -287,10 +292,10 @@ The docs describe `type: r` assets (`assets/r.md`). R is not bundled. Skim the p
 <summary>Answers</summary>
 
 1. A Python asset with `materialization.type: table` needs a `connection`. Validation should report it.
-2. Bruin looks for a function named `materialize`. Without it, the script runs as a plain script and nothing is materialized (UNVERIFIED: whether Bruin warns). Record it.
-3. Python assets do not support `time_interval`. Validation or the run rejects it.
+2. When `materialization.type` is set, Bruin imports the module and calls `module.materialize()`. With the function renamed, the call raises an AttributeError and the asset fails. Without a `materialization` block the script runs as a plain script and `materialize()` is never called. Record the error text.
+3. Python assets do not support `time_interval`. `bruin validate` reports "Materialization strategy 'time_interval' is not supported for Python assets" and lists the supported strategies (`pkg/lint/rules.go`).
 4. uv fails to resolve the package and the asset fails before your code runs.
-5. A non-zero exit is an asset failure. With `retries: 1` Bruin runs it once more.
+5. A non-zero exit is an asset failure. Local `bruin run` does not retry in v0.11.773: `retries` is parsed from the definition but nothing in the local runner consumes it. Expect one attempt. Record whether you see a second one (UNVERIFIED at runtime).
 6. `requirements.txt` takes priority over `pyproject.toml`. The environment would not contain `bruin-sdk`, so `from bruin import query` fails with an import error.
 7. `--mask-credentials` defaults to `true` and redacts connection credential values from run logs (`commands/run.md`). Verify what you see. Masking is not a license to print secrets.
 </details>
@@ -307,7 +312,7 @@ The docs describe `type: r` assets (`assets/r.md`). R is not bundled. Skim the p
 <details>
 <summary>Answers</summary>
 
-1. `image` selects the version. Dependencies come from the closest `requirements.txt` or `pyproject.toml` (with `uv.lock`) found by walking up from the asset, with `requirements.txt` winning when both are present.
+1. `image: python:X.Y` selects the version (default 3.11, `requires-python` is the fallback). Dependencies come from the closest `requirements.txt` or `pyproject.toml` (with `uv.lock`) found by walking up from the asset, with `requirements.txt` winning when both are present.
 2. A `connection`, a `materialization` block with `type: table`, and a `materialize()` function that returns data.
 3. `create+replace`, `append`, `merge`, `delete+insert`.
 4. `context.is_full_refresh` (environment variable `BRUIN_FULL_REFRESH` equals `1`).
@@ -321,7 +326,8 @@ The docs describe `type: r` assets (`assets/r.md`). R is not bundled. Skim the p
 |---|---|---|
 | 6.2 first run time (uv setup) and second run time | | |
 | 6.2 Windows uv behavior, any prompts | | |
-| 6.3 lockfile created; clean behavior | | |
+| 6.3 lockfile created by a normal run; `.venv` appears or not | | |
+| 6.7 unquoted `--var` string error text | | |
 | 6.4 SDK query output matches (90 and 85) | | |
 | 6.4 audit row written | | |
 | 6.5 calendar: 730 rows, column types | | |

@@ -8,7 +8,7 @@ Written against Bruin CLI v0.11.773 and the official docs at that version.
 
 - Git and a shell (Git Bash on Windows, bash on Linux or macOS).
 - Bruin CLI (Module 0 covers installing and pinning it).
-- A Postgres server you can create two databases on. Use version 17 or newer if you want the history labs in Module 8. No Docker is required. If you want an easy local server, the official Postgres container image is one option, but any server works.
+- A Postgres server you can create two databases on (Module 10 adds a third, `bruin_course_dev`). Use version 17 or newer if you want the history labs in Module 8. The `merge` strategy renders `MERGE INTO`, which needs version 15 or newer. No Docker is required. If you want an easy local server, the official Postgres container image is one option, but any server works.
 - Python 3 on the path for a few helper steps. Bruin manages its own Python environments for Python assets.
 - About 50 to 55 hours in total, spread however you like.
 
@@ -65,7 +65,13 @@ Your own work goes in a separate repository (Module 0 creates `lakota-bruin`), b
 
 ## What was and was not verified
 
-The author wrote these lessons from the official docs and tested what could be tested without Bruin itself: the data generator, the source-system SQL, the reset script, the polling wrapper, the alert wrapper and the course's Postgres SQL on Postgres 16. The Bruin commands, YAML and asset behavior were not run by the author. Your validation logs close that gap. When a command or an expected result in a lesson is wrong for your version, fix the lesson in this repository, and note it in the log.
+The author wrote these lessons from the official docs and tested what could be tested without Bruin itself: the data generator, the source-system SQL, the reset script, the polling wrapper, the alert wrapper and the course's Postgres SQL on Postgres 16. The Bruin commands, YAML and asset behavior were not run by the author. Where the docs were silent or disagreed with each other, the lessons were checked against the Bruin v0.11.773 source code, and those statements say "source-derived". Reading the source is stronger than guessing and weaker than a run, so source-derived claims stay in your validation log until you have seen them. The audit that produced these checks is in `audit/2026-10-06-docs-audit.md`. Your validation logs close the remaining gap. When a command or an expected result in a lesson is wrong for your version, fix the lesson in this repository, and note it in the log.
+
+## Conventions
+
+- **Dates.** `bruin run` treats a date-only `--end-date` as midnight at the start of that day, which gives an empty or one-instant window. Every command in the course passes `--end-date "YYYY-MM-DD 23:59:59.999999"` to cover the whole day. `bruin backfill` treats a date-only end as inclusive.
+- **Project setup.** You create the project with `bruin init` and `bruin connections add`, not by writing `.bruin.yml` by hand. The two exceptions are `${VAR}` references and `config.full_refresh_restricted`, which the CLI cannot store (Module 10).
+- **Production names.** Bruin asks for confirmation only when an environment name contains `prod`, and only when `--environment` is passed explicitly (Module 10, 10.8).
 
 ## Recording findings
 

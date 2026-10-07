@@ -2,7 +2,7 @@
 # Run a Bruin command, keep its log, and raise an alert when it fails (Module 11).
 #
 #   bash tools/run_and_alert.sh <job_name> -- <bruin arguments...>
-#   example: bash tools/run_and_alert.sh nightly_lakota -- run lakota --start-date 2026-01-04 --end-date 2026-01-04
+#   example: bash tools/run_and_alert.sh nightly_lakota -- run lakota --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 #
 # Why this exists: Bruin's notifications are a Bruin Cloud feature, and an asset cannot run
 # "on failure" because assets downstream of a failed asset are skipped. The only place that
@@ -12,6 +12,10 @@
 #   1. appends a line to $ALERT_DIR/alerts.log   (default: logs/alerts)
 #   2. posts a JSON message {"text": "..."} to $ALERT_WEBHOOK_URL when it is set
 # It always exits with Bruin's own exit code, so the scheduler also records the failure.
+#
+# Notes: Bruin exits 1 for any failed run (asset or check), so the alert text cannot tell them apart.
+# The local runner does not retry. For a prod-named environment add --force to the Bruin arguments.
+# Do not pass secrets as flags: the arguments are logged (use ${VAR} references in .bruin.yml).
 #
 # Settings: ALERT_DIR, ALERT_WEBHOOK_URL, ALERT_TAIL_LINES (default 15), BRUIN_BIN (default bruin)
 set -uo pipefail

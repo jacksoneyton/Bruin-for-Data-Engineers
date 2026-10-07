@@ -5,7 +5,7 @@ Written against Bruin v0.11.773. Record the version you actually run.
 
 ## Outcome
 
-You have Bruin, uv and Postgres working on your machine, a dedicated empty database, a Bruin project with one working connection, and one successful `bruin run`.
+You have Bruin, uv and Postgres working on your machine, two dedicated empty databases, a Bruin project scaffolded with `bruin init` and wired to them with `bruin connections add`, and one successful `bruin run`.
 
 ## Ground rules for the whole course
 
@@ -33,7 +33,15 @@ In Git Bash:
 curl -LsSf https://getbruin.com/install/cli | sh
 ```
 
-Source: `getting-started/introduction/installation.md`. The install script puts the binary in `~/.local/bin` by default. If you get `Permission denied`, make sure your user can write to that folder and run the installer again without `sudo` (the docs warn that `sudo` installs into root's home).
+Source: `getting-started/introduction/installation.md`. The install script puts the binary in `~/.local/bin` by default.
+
+This course is written against v0.11.773. The installer above installs the latest release, which may behave differently. To pin the version, pass it to the installer script (the docs show this form with a version in `cicd/azure-pipelines.md`):
+
+```bash
+curl -LsSf https://getbruin.com/install/cli | sh -s v0.11.773
+```
+
+If Bruin is already installed, `bruin upgrade v0.11.773` switches the installed binary to a specific release in place (`commands/upgrade.md`). It also moves you to a newer or older version later, and it does nothing if you already have the target. Do not run a bare `bruin upgrade` during the course: it installs the latest release. UNVERIFIED: whether `bruin upgrade` can downgrade. If it refuses, rerun the pinned installer. Record the output of `bruin version`. If you get `Permission denied`, make sure your user can write to that folder and run the installer again without `sudo` (the docs warn that `sudo` installs into root's home).
 
 Open a new Git Bash window so your `PATH` refreshes, then:
 
@@ -141,74 +149,37 @@ Add `export COURSE=...` to `~/.bashrc` as well.
 
 A Bruin project is a Git repository, and `.bruin.yml` must live at its root (`core-concepts/project.md`). That is why your work lives in its own repository.
 
-## 0.7 Create `.bruin.yml`
+## 0.7 Scaffold the project with `bruin init`
 
-Inside `lakota-bruin`, create `.bruin.yml`:
-
-```yaml
-default_environment: default
-environments:
-  default:
-    connections:
-      postgres:
-        - name: "lakota-pg"
-          username: "bruin_course"
-          password: "choose-a-simple-password"
-          host: "localhost"
-          port: 5432
-          database: "bruin_course"
-        - name: "lakota-src"
-          username: "bruin_course"
-          password: "choose-a-simple-password"
-          host: "localhost"
-          port: 5432
-          database: "bruin_course_src"
-```
-
-`lakota-pg` is the warehouse Bruin builds in. `lakota-src` is the source system. Both are the same connection type (`postgres`). The field names come from `platforms/postgres.md`. Two optional fields from the same page matter later: `ssl_mode` and `schema`.
-
-If a later step fails with a message about SSL not being supported by the server, add this line under the connection and retry:
-
-```yaml
-          ssl_mode: "disable"
-```
-
-`ssl_mode` accepts the libpq modes listed in the Postgres docs. UNVERIFIED: whether your local server needs it.
-
-Bruin creates `.bruin.yml` automatically if it is missing and adds it to `.gitignore` (`core-concepts/project.md`). Confirm it is ignored:
+You do not write `.bruin.yml` or a pipeline folder from scratch. `bruin init <template> <folder>` scaffolds them (`commands/init.md`, `getting-started/introduction/quickstart.md`). Run it from the work repository:
 
 ```bash
-git check-ignore -v .bruin.yml
+cd ~/lakota-bruin
+bruin init empty smoke
 ```
 
-If nothing prints, add `.bruin.yml` to `.gitignore` yourself. The file holds credentials and must never be committed.
+What this does, from `commands/init.md` and, where marked, from reading the CLI source at the v0.11.773 tag (`cmd/init.go`):
 
-## 0.8 List and test the connection
+- It creates the folder `smoke/` with `pipeline.yml` and `assets/placeholder`.
+- It looks for a Git repository. You are inside one, so the pipeline folder is created in the current directory and `.bruin.yml` belongs at the Git root. Outside a repository, `init` creates a `bruin/` wrapper folder and runs `git init` there. `--in-place` skips the wrapper and initializes the current folder instead.
+- If the template ships its own `.bruin.yml`, `init` merges its connections into the project `.bruin.yml` (creating the file when it is missing). The `empty` template ships none, so no file is created yet and `init` prints "Create a .bruin.yml with your connection credentials" as a next step (source).
+- `bruin init` with no template name opens a template picker. `bruin init --merge <template> <existing pipeline folder>` copies a template's assets into a pipeline you already have, without overwriting anything.
+
+Which template to use:
+
+| Template | What you get | Use it here? |
+|---|---|---|
+| `default` | A pipeline built on DuckDB and a public chess API. It writes a DuckDB connection and a `chess` connection into `.bruin.yml`. | No. DuckDB is not a course target, and the extra connections would clutter your config. You look at it in a scratch folder in Module 1. |
+| `empty` | `pipeline.yml` with a name and every other option commented out, plus a placeholder asset. | Yes. |
+| `bronze-silver-postgres` | An ingestr asset that loads a public FX-rate API into Postgres, a SQL asset on top of it, and a `.bruin.yml` with a `postgres-default` connection and placeholder credentials. | Look at it in Module 1. It is the closest official starter to this course. |
+
+Source: `getting-started/templates.md` lists the bundled templates.
+
+Now make the scaffold yours. Delete the placeholder and replace `smoke/pipeline.yml` with:
 
 ```bash
-bruin connections list
-bruin connections test --name lakota-pg
-bruin connections test --name lakota-src
+rm smoke/assets/placeholder
 ```
-
-Source: `commands/connections.md`. `list` prints connection type, name and the names of filled fields, never the values. `test` runs a simple validation check against the connection.
-
-## 0.9 First pipeline and first run
-
-Create this structure inside `lakota-bruin`:
-
-```text
-lakota-bruin/
-  .bruin.yml            (git-ignored)
-  .gitignore
-  smoke/
-    pipeline.yml
-    assets/
-      smoke/
-        hello.sql
-```
-
-`smoke/pipeline.yml`:
 
 ```yaml
 name: smoke
@@ -216,7 +187,66 @@ default_connections:
   postgres: "lakota-pg"
 ```
 
-`smoke/assets/smoke/hello.sql`:
+The template names the pipeline `my-pipeline`. Bruin uses the pipeline name for its run-state folder (`logs/runs/<name>`) and in lineage and Cloud, so give it a real one. `default_connections` tells assets in this pipeline which connection to use for each platform when they do not name one (`pipelines/definition.md`).
+
+## 0.8 Add the connections with `bruin connections add`
+
+Connections live in `.bruin.yml`. You add them with `bruin connections add` (`commands/connections.md`). If `.bruin.yml` does not exist, the command creates it with an environment called `default`, and it adds `.bruin.yml` to `.gitignore` (creating that file if needed). Both behaviors are described in `core-concepts/project.md` and match the CLI source.
+
+Add the warehouse connection and the source connection. In flag mode, all four of `--env`, `--type`, `--name` and `--credentials` must be given together. The credentials are the JSON form of the connection, with the field names from `platforms/postgres.md`:
+
+```bash
+bruin connections add --env default --type postgres --name lakota-pg \
+  --credentials '{"username": "bruin_course", "password": "choose-a-simple-password", "host": "localhost", "port": 5432, "database": "bruin_course"}'
+
+bruin connections add --env default --type postgres --name lakota-src \
+  --credentials '{"username": "bruin_course", "password": "choose-a-simple-password", "host": "localhost", "port": 5432, "database": "bruin_course_src"}'
+```
+
+`lakota-pg` is the warehouse Bruin builds in. `lakota-src` is the source system. Both use the connection type `postgres`. Optional Postgres fields from the same docs page that matter later are `ssl_mode` and `schema`.
+
+Flag mode is the form you use in scripts and CI. Try the interactive form once on a throwaway connection so you know it exists:
+
+```bash
+bruin connections add
+```
+
+Run in a terminal without flags, it walks through four steps: pick the environment (skipped when there is only one), enter a name, pick the type (type to filter the list, choose `postgres`), then fill in the fields. Secret fields are masked as you type. Name it `scratch-pg`, fill in anything, then remove it again:
+
+```bash
+bruin connections delete --env default --name scratch-pg
+```
+
+UNVERIFIED: whether the interactive wizard starts in Git Bash on Windows. Some Windows terminals do not give Go programs a real console, and the command then prints "No flags provided and not running in a terminal". If you see that, try `winpty bruin connections add`, or skip the wizard. Record what happened.
+
+There is no `bruin connections update`. To change a connection, edit `.bruin.yml` directly (small edits are normal) or delete and re-add it.
+
+If a later step fails with a message about SSL not being supported by the server, delete and re-add the connection with `"ssl_mode": "disable"` added to the credentials JSON. The Postgres docs say `ssl_mode` accepts the libpq modes. UNVERIFIED: whether your local server needs it. The CLI source gives `ssl_mode` a default of `allow`, which usually works against a server without SSL.
+
+Look at what Bruin wrote, and confirm the file is ignored by Git:
+
+```bash
+cat .gitignore
+git check-ignore -v .bruin.yml
+```
+
+`.bruin.yml` holds credentials and must never be committed. If `check-ignore` prints nothing, add `.bruin.yml` to `.gitignore` yourself.
+
+One detail that bites later: Bruin appends its `.gitignore` entries without a trailing newline in the file. When you append your own lines, start with a newline, for example `printf '\nlogs/\n' >> .gitignore`. A plain `echo "logs/" >> .gitignore` can glue the new line onto the last entry.
+
+## 0.9 List and test the connections
+
+```bash
+bruin connections list
+bruin connections test --name lakota-pg
+bruin connections test --name lakota-src
+```
+
+Source: `commands/connections.md`. `list` prints connection type, name and the names of filled fields, never the values. `test` runs a simple validation check against the connection and, without `--env`, uses the default environment from `.bruin.yml`.
+
+## 0.10 First pipeline and first run
+
+You already have `smoke/pipeline.yml` from 0.7. Add one asset, `smoke/assets/smoke/hello.sql`:
 
 ```sql
 /* @bruin
@@ -229,7 +259,20 @@ materialization:
 SELECT 1 AS one, now() AS built_at
 ```
 
-Notes on what you just wrote, all from `assets/definition-schema.md`:
+The project now looks like this:
+
+```text
+lakota-bruin/
+  .bruin.yml            (git-ignored, written by bruin connections add)
+  .gitignore
+  smoke/
+    pipeline.yml
+    assets/
+      smoke/
+        hello.sql
+```
+
+Notes on what you wrote, all from `assets/definition-schema.md`:
 
 - A SQL asset keeps its definition and its query in one `.sql` file. The definition sits between `/* @bruin` and `@bruin */`.
 - `name` follows `schema.table`. Postgres accepts two segments only.
@@ -246,17 +289,18 @@ bruin query --connection lakota-pg --query "select * from smoke.hello"
 
 Sources: `commands/validate.md`, `commands/run.md`, `commands/query.md`.
 
-You should see the validation pass, a run that executes one asset, and a one-row table. Bruin should also have created the `smoke` schema for you. The docs say the schema segment is auto-created where the platform supports it (`assets/definition-schema.md`). UNVERIFIED for Postgres specifically. If the run fails with "schema does not exist", create it with `psql "$PGURL" -c "create schema smoke"` and record that in the validation log.
+You should see the validation pass, a run that executes one asset, and a one-row table. Bruin creates the `smoke` schema for you: for a SQL asset with a materialization, the Postgres runner issues `CREATE SCHEMA IF NOT EXISTS` before the query (read from the CLI source, `pkg/postgres/operator.go`; confirm in your run and record it in the validation log).
 
-Look at what Bruin wrote to disk:
+Look at what Bruin did on disk and in Git:
 
 ```bash
 ls logs/runs/smoke
+cat .gitignore
 ```
 
-Each run writes a JSON log at `logs/runs/<pipeline>/<run-id>.json` (`commands/run.md`). You will use these in Module 11. Add `logs/` to `.gitignore` for now.
+Each run writes a JSON state file at `logs/runs/<pipeline>/<run-id>.json` (`commands/run.md`). Module 4 explains what it is for. `bruin run` adds `logs/runs` and `logs/*.log` to `.gitignore` itself (CLI source, `cmd/run.go`), so you do not need to. Confirm both entries appear. `bruin query` adds `logs/queries` the same way.
 
-## 0.10 Setup check script
+## 0.11 Setup check script
 
 Save this as `check_setup.sh` in `lakota-bruin` and run it with `bash check_setup.sh`. It prints PASS or FAIL per item.
 
@@ -287,15 +331,17 @@ Do these in order. Read the symptom, find the cause, then fix. The answers are a
 1. In `smoke/pipeline.yml`, change `lakota-pg` to `lakota_pg`. Run `bruin validate smoke` and `bruin run smoke`. What does each report? Which one catches it earlier?
 2. In `smoke/assets/smoke/hello.sql`, change the asset name to `hello` (one segment). Validate. What does Bruin say, and what rule from `assets/definition-schema.md` explains it?
 3. In `.bruin.yml`, change the port to `5439`. Run `bruin connections test --name lakota-pg`. Compare this failure with the one in step 1.
+4. Move `.bruin.yml` aside (`mv .bruin.yml .bruin.yml.bak`) and run `bruin validate smoke`. What does Bruin do about the missing file, and what does `bruin connections list` show afterwards? Then restore the file (`mv .bruin.yml.bak .bruin.yml`; if Bruin created a new one, delete that first).
 
-Restore all three after each step.
+Restore all four after each step.
 
 <details>
 <summary>Answers</summary>
 
-1. The default connection name no longer exists in `.bruin.yml`. Validation checks configuration without running anything, so it should catch it before the run does. UNVERIFIED: the exact wording. Record both messages.
+1. The default connection name no longer exists in `.bruin.yml`. Without `--fast`, `validate` also runs a live query check for Postgres assets, which needs the connection (`cmd/lint.go`, read from the CLI source), so it should fail before the run does. UNVERIFIED: which command reports it first and the exact wording. Record both messages.
 2. Postgres needs `schema.table`. A single-segment name is rejected by validation, and the docs state names without a schema are rejected by most databases. Fix by using two segments, or put the file under a folder inside `assets/` and rely on name inference.
-3. A wrong port is a runtime connectivity failure, not a configuration mismatch. `connections test` reports it, and `validate` alone would not necessarily catch it.
+3. A wrong port is a runtime connectivity failure. `connections test` reports it. `validate --fast` would not catch it, because `--fast` never opens a connection. A non-fast `validate` may, because it runs queries against the database.
+4. `core-concepts/project.md` says Bruin creates `.bruin.yml` automatically the first time a command needs it and adds it to `.gitignore`. The new file has a `default` environment and no connections, so `validate` then fails on the unknown connection `lakota-pg`. This is why you should never delete `.bruin.yml` casually: Bruin does not rebuild your connections. Re-add them with 0.8. UNVERIFIED: the exact message.
 </details>
 
 ## Check questions
@@ -305,15 +351,17 @@ Restore all three after each step.
 3. A SQL asset file has its definition in `hello.asset.yml` and its query in `hello.sql`. Why does this fail?
 4. What does `bruin connections list` show, and what does it deliberately not show?
 5. A pipeline run without `--start-date` and `--end-date` uses which date window?
+6. Which commands create `.bruin.yml`, and what else do they change?
 
 <details>
 <summary>Answers</summary>
 
 1. At the root of the Git repository (override with `--config-file` or `BRUIN_CONFIG_FILE`). It holds credentials.
-2. `validate` checks configuration and structure (and for some platforms dry-runs queries) without executing assets. `run` executes them.
+2. `validate` checks configuration and structure without executing assets. Without `--fast` it also checks each query against the database for BigQuery, Snowflake and Postgres (`cmd/lint.go`); `--fast` runs only the offline rules. `run` executes the assets.
 3. SQL assets keep definition and query in the same file. A `.asset.yml` file is treated as a separate standalone asset.
 4. Type, name and the names of filled fields. It never shows values.
-5. Yesterday (start of yesterday to end of yesterday) (`commands/run.md`).
+5. Yesterday (start of yesterday to end of yesterday) (`commands/run.md`). A date-only `--end-date` means midnight at the start of that day, so Module 1 teaches the end-of-day form you will use in every lab.
+6. `bruin connections add` creates it (with a `default` environment) when it is missing. `bruin init <template>` creates or merges it when the template ships a `.bruin.yml`. Both add `.bruin.yml` to `.gitignore`. Most other commands also create an empty one on first use.
 </details>
 
 ## Validation log
@@ -326,9 +374,12 @@ Copy this table into your notes and fill it in. It is what tells the author what
 | 0.3 uv install | | |
 | 0.4 Postgres and psql on PATH | | |
 | 0.5 role and both databases | | |
-| 0.7 ssl_mode needed? | | |
-| 0.8 connections test (both) | | |
-| 0.9 schema auto-created? | | |
-| 0.10 check script | | |
-| Break/fix 1 messages | | |
+| 0.7 `bruin init empty smoke`: what it printed, files it created | | |
+| 0.8 connections add (flag mode) worked? Interactive wizard worked in your terminal? | | |
+| 0.8 ssl_mode needed? | | |
+| 0.9 connections test (both) | | |
+| 0.10 schema auto-created? Which `.gitignore` entries did Bruin add? | | |
+| 0.11 check script | | |
+| Break/fix 1 messages (validate and run) | | |
+| Break/fix 4: file recreated? What does `connections list` show? | | |
 | Time taken | | |

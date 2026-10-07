@@ -30,7 +30,15 @@ Two rules from the docs shape every lab below:
 1. **Incremental strategies write into an existing table.** For a new SQL asset, do the first run with `--full-refresh` so Bruin creates the table with `create+replace`. Later runs use the real strategy.
 2. **Bruin does not filter your query.** For `append`, `delete+insert`, `merge` and `time_interval`, you write the date filter in the query with the built-in variables. Bruin only manages how the result lands in the table. The docs show the pattern for full refreshes: wrap the filter in `{% if not full_refresh %} ... {% endif %}` so a full refresh loads everything.
 
-Postgres notes from the docs: `partition_by` and `cluster_by` are ignored on PostgreSQL. `merge`, `time_interval`, `scd2_*` and Data Vault are all supported. `time_interval` runs delete and insert in one transaction. `incremental_key` cannot be combined with `merge` in a SQL asset.
+Postgres notes from the docs: `partition_by` and `cluster_by` are ignored on PostgreSQL. `merge`, `time_interval`, `scd2_*` and Data Vault are all supported. `time_interval` runs delete and insert in one transaction. For SQL assets, `incremental_key` is accepted only with `delete+insert`, `time_interval`, `scd2_by_time` and `scd2_by_column`, so it cannot be combined with `merge`. (Ingestr assets in Module 2 use `incremental_key` differently: there it names the column ingestr compares with the run window, and `merge` plus `incremental_key` is normal.)
+
+Facts from reading the Postgres materializer in the CLI source (`pkg/postgres/materialization.go`, v0.11.773), to confirm with `bruin render`:
+
+- `merge` is written as a `MERGE INTO` statement, which needs **Postgres 15 or later**. The SCD2 strategies need 17 or later per the docs. A server older than 15 fails here, in Module 3, not in Module 8.
+- A `merge` with no column marked `update_on_merge` and no `merge_sql` only inserts new keys. It never updates existing rows. That is why the `accounts_current` asset below marks its changing columns.
+- `create+replace` on Postgres drops the table and recreates it inside one transaction, so grants and dependent views on the old table are lost.
+- `ddl` is `CREATE TABLE IF NOT EXISTS`. A `--full-refresh` does not drop it: Bruin logs "Full refresh detected, but DDL strategy is in use" and leaves the table.
+- `bruin validate` checks that the configuration is complete. It does not check that your platform supports a strategy.
 
 ## 3.2 Build the assets
 
@@ -265,14 +273,16 @@ Validate:
 bruin validate lakota
 ```
 
+A `ddl` asset has an empty query body. Reading the CLI source, the non-fast query validator for Postgres can report "No queries found in executable file" for such an asset, and `--fast` skips that rule (`cmd/lint.go`, `pkg/lint/query.go`). If you see that message, run `bruin validate --fast lakota` and note the difference in the log. `bruin run` is not affected, because its lint step uses only the offline rules. UNVERIFIED at runtime.
+
 ## 3.3 Read the SQL before you run it
 
 ```bash
-bruin render lakota/assets/staging/accounts_current.sql --start-date 2026-01-03 --end-date 2026-01-03
-bruin render lakota/assets/staging/accounts_current.sql --start-date 2026-01-03 --end-date 2026-01-03 --full-refresh
-bruin render lakota/assets/mart/daily_txn_summary.sql --start-date 2026-01-03 --end-date 2026-01-03
-bruin render lakota/assets/mart/channel_daily.sql --start-date 2026-01-03 --end-date 2026-01-03
-bruin render lakota/assets/staging/txn_log.sql --start-date 2026-01-03 --end-date 2026-01-03
+bruin render lakota/assets/staging/accounts_current.sql --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
+bruin render lakota/assets/staging/accounts_current.sql --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999" --full-refresh
+bruin render lakota/assets/mart/daily_txn_summary.sql --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
+bruin render lakota/assets/mart/channel_daily.sql --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
+bruin render lakota/assets/staging/txn_log.sql --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 bruin render lakota/assets/ctl/run_audit.sql
 ```
 
@@ -284,6 +294,8 @@ For each one, write down in your notes:
 
 This is the habit that makes you fast later: you can read what Bruin will do before it does it.
 
+Look at how the date variables render in the first command. `start_datetime` and `end_datetime` print as `2026-01-03T00:00:00` and `2026-01-03T23:59:59`, with no fractional seconds. `start_timestamp` and `end_timestamp` keep the microseconds and a zone suffix (CLI source, `pkg/jinja/jinja.go`). The assets above use the `*_datetime` forms with an inclusive upper bound, which is correct only because the course data has whole-second timestamps. A row at 23:59:59.5 would fall outside `<= '...T23:59:59'`. For real data with fractional seconds, prefer `< '{{ end_timestamp }}'` or the `*_timestamp` variables.
+
 ## 3.4 Lab: three days, strategy by strategy
 
 ### Day 1: reset and first load
@@ -293,8 +305,8 @@ cd ~/lakota-bruin
 bash "$COURSE/tools/reset.sh" warehouse
 bash "$COURSE/tools/reset.sh" source 1
 
-bruin run lakota --tag landing --start-date 2000-01-01 --end-date 2026-01-02
-bruin run lakota --exclude-tag landing --full-refresh --start-date 2026-01-01 --end-date 2026-01-02
+bruin run lakota --tag landing --start-date 2000-01-01 --end-date "2026-01-02 23:59:59.999999"
+bruin run lakota --exclude-tag landing --full-refresh --start-date 2026-01-01 --end-date "2026-01-02 23:59:59.999999"
 ```
 
 The first command loads landing (wide window, as in Module 2). The second builds everything else with `--full-refresh`, which creates each table with `create+replace`.
@@ -321,7 +333,7 @@ bruin query --connection lakota-pg --query "select 'customers' t, count(*) from 
 
 ```bash
 cd "$COURSE/data" && psql "$PGURL_SRC" -f sql/02_source_day2.sql && cd ~/lakota-bruin
-bruin run lakota --start-date 2026-01-03 --end-date 2026-01-03
+bruin run lakota --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 ```
 
 Expected:
@@ -344,7 +356,7 @@ bruin query --connection lakota-pg --query "select account_id, status, updated_a
 ### Re-run the same window
 
 ```bash
-bruin run lakota --start-date 2026-01-03 --end-date 2026-01-03
+bruin run lakota --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 ```
 
 Compare row counts with the table above. Only one asset should have changed: `staging.txn_log` (append) now has 330 rows. Every other asset is stable. That is the practical meaning of "safe to re-run".
@@ -352,7 +364,7 @@ Compare row counts with the table above. Only one asset should have changed: `st
 Repair the duplicate:
 
 ```bash
-bruin run lakota/assets/staging/txn_log.sql --full-refresh --start-date 2026-01-03 --end-date 2026-01-03
+bruin run lakota/assets/staging/txn_log.sql --full-refresh --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 ```
 
 `txn_log` returns to 240. Compare the loaded rows with the source: `landing.core_transactions` has 240.
@@ -361,7 +373,7 @@ bruin run lakota/assets/staging/txn_log.sql --full-refresh --start-date 2026-01-
 
 ```bash
 cd "$COURSE/data" && psql "$PGURL_SRC" -f sql/03_source_day3.sql && cd ~/lakota-bruin
-bruin run lakota --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 Expected: customers 73, accounts_current 99, txn_log 325, daily_txn_summary 16, channel_daily 20. Branch counts: 14, 15, 6, 6, 7, 7, 7, 11 for branches 1 to 8.
@@ -374,8 +386,8 @@ Both replace a slice. They differ when the new result has no rows for part of th
 
 ```bash
 psql "$PGURL" -c "delete from landing.core_transactions where txn_ts::date = '2026-01-03'"
-bruin run lakota/assets/mart/daily_txn_summary.sql --start-date 2026-01-03 --end-date 2026-01-03
-bruin run lakota/assets/mart/channel_daily.sql    --start-date 2026-01-03 --end-date 2026-01-03
+bruin run lakota/assets/mart/daily_txn_summary.sql --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
+bruin run lakota/assets/mart/channel_daily.sql    --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 bruin query --connection lakota-pg --query "select txn_date, count(*) from mart.daily_txn_summary group by 1 order by 1" 
 bruin query --connection lakota-pg --query "select txn_date, count(*) from mart.channel_daily group by 1 order by 1"
 ```
@@ -383,7 +395,7 @@ bruin query --connection lakota-pg --query "select txn_date, count(*) from mart.
 By the docs, `time_interval` deletes the whole window and inserts whatever the query returns, so the 2026-01-03 rows in `daily_txn_summary` disappear. `delete+insert` only deletes the key values present in the new result. With no rows returned, nothing is deleted and the stale 2026-01-03 rows in `channel_daily` remain. Confirm that on your machine, then restore the day with a landing reload:
 
 ```bash
-bruin run lakota --tag landing --start-date 2026-01-03 --end-date 2026-01-03
+bruin run lakota --tag landing --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 ```
 
 ## 3.6 `full_refresh_restricted`
@@ -391,10 +403,16 @@ bruin run lakota --tag landing --start-date 2026-01-03 --end-date 2026-01-03
 Add `full_refresh_restricted: true` to `staging.accounts_current` (a top-level key in the definition block, next to `materialization`). Run:
 
 ```bash
-bruin run lakota/assets/staging/accounts_current.sql --full-refresh --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota/assets/staging/accounts_current.sql --full-refresh --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
-The docs say the table is not dropped, the normal strategy runs, and Bruin prints a warning. Confirm. This is the protection you will put on history tables in Module 8. Keep the flag on this asset.
+The docs say the table is not dropped and Bruin prints a warning. The CLI source gives the text: `Warning: full refresh is restricted for asset "staging.accounts_current"; running incrementally.` A restricted asset does not run as a full refresh at all: the `full_refresh` template variable is false for it, so your `{% if not full_refresh %}` branch stays active and the date filter stays in force. The asset does a windowed merge, not a full-table merge. Confirm both:
+
+```bash
+bruin render lakota/assets/staging/accounts_current.sql --full-refresh --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
+```
+
+The rendered SQL should still contain the `WHERE updated_at >= ...` filter. Record the warning text you see. This is the protection you will put on history tables in Module 8. Keep the flag on this asset.
 
 ## 3.7 The strategies you read but did not run yet
 
@@ -409,18 +427,18 @@ Restore after each.
 1. Remove the `primary_key: true` line from `staging.accounts_current`. Run `bruin validate lakota`, then the asset.
 2. Add `incremental_key: updated_at` to the `merge` asset's `materialization`. Validate.
 3. Remove `time_granularity` from `mart.daily_txn_summary`. Validate.
-4. Remove the `{% if not full_refresh %}` wrapper from `mart.daily_txn_summary` (keep the plain `WHERE` filter). Run `bruin run lakota/assets/mart/daily_txn_summary.sql --full-refresh --start-date 2026-01-04 --end-date 2026-01-04`, then query the table. What is in it?
-5. Run the Day 2 incremental command on a fresh warehouse without ever doing the `--full-refresh` build (drop the `staging` and `mart` schemas, then run `bruin run lakota --start-date 2026-01-03 --end-date 2026-01-03`).
+4. Remove the `{% if not full_refresh %}` wrapper from `mart.daily_txn_summary` (keep the plain `WHERE` filter). Run `bruin run lakota/assets/mart/daily_txn_summary.sql --full-refresh --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"`, then query the table. What is in it?
+5. Run the Day 2 incremental command on a fresh warehouse without ever doing the `--full-refresh` build (drop the `staging` and `mart` schemas, then run `bruin run lakota --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"`).
 6. In `mart.channel_daily`, change `incremental_key` to `channel`. Run it for the same window twice. What do you see?
 
 <details>
 <summary>Answers</summary>
 
-1. The docs state `merge` requires a `primary_key` column. Validation reports the missing key (UNVERIFIED wording). `bruin validate` checks that the configuration is complete.
-2. The docs say `incremental_key` cannot be combined with `merge`. Setting it with any other explicit strategy is a validation error.
-3. `time_interval` requires `time_granularity` (`date` or `timestamp`).
+1. The docs state `merge` requires a `primary_key` column. Validation reports: "Materialization strategy 'merge' requires the 'primary_key' field to be set on at least one column" (CLI source, `pkg/lint/rules.go`). Record the exact text you get.
+2. The docs say `incremental_key` cannot be combined with `merge`. The validation message reads: "Incremental key is only supported with 'delete+insert', 'time_interval', 'scd2_by_time' and 'scd2_by_column' strategies."
+3. `time_interval` requires `time_granularity` (`date` or `timestamp`). The messages are "Materialization strategy 'time_interval' requires the 'time_granularity' field to be set" and "'time_granularity' can be either 'date' or 'timestamp'." You may see both in one run.
 4. After a full refresh the table holds only the 2026-01-04 rows, because the filter still applies to the full-refresh run. Full refresh recreates the table from "the full query result", and your query was not full. This is the mistake the `full_refresh` variable pattern prevents.
-5. The incremental strategies fail because the target tables do not exist (the docs: incremental strategies write into an existing table and most platforms do not create it). UNVERIFIED: the exact PostgreSQL error text. Record it.
+5. For a SQL asset with a materialization, the Postgres runner issues `CREATE SCHEMA IF NOT EXISTS` first, so dropping the schemas does not break the schema step. Tables are different: `create+replace` assets rebuild themselves (`staging.customers`), but the incremental strategies (`truncate+insert`, `merge`, `append`, `delete+insert`, `time_interval`) need an existing table and fail with a "relation does not exist" style error, and their downstream assets do not run. The exact PostgreSQL text is UNVERIFIED, so record it. To recover, use `--full-refresh`, which turns every strategy except `ddl` into `create+replace`. A `ddl` table is not recreated by a full refresh, so recreate `ctl.run_audit` by running that asset on its own once the schema exists.
 6. `delete+insert` deletes rows whose key value appears in the new result and the key is now a channel name. The window is no longer a date, so each run deletes every row of each channel present and inserts only the day's rows, which wipes history for those channels. The key must match the slice you intend to replace.
 </details>
 
@@ -455,7 +473,7 @@ Restore after each.
 2. Bruin deletes the window and inserts the whole query result, which includes rows outside the window. Rows outside the window are duplicated next to the existing ones.
 3. `create+replace`, `truncate+insert` (full rebuilds), `time_interval` within the window, `delete+insert` only when other rows with the same key value are present in the new result, and SCD2 (which closes the version instead of deleting it). `merge` and `append` never delete.
 4. `create+replace` recreates the table and can reset grants. `truncate+insert` keeps the table object, its permissions and indexes.
-5. It keeps the table from being dropped during a full refresh. It runs the normal strategy and prints a warning. History tables (SCD2) and tables that are slow to rebuild need it.
+5. It keeps the table from being dropped during a full refresh. The asset runs incrementally instead, with the `full_refresh` variable false, and Bruin prints a warning. History tables (SCD2) and tables that are slow to rebuild need it.
 6. It adds a condition to the match step of a merge so fewer target rows are scanned. If a row that should match falls outside the predicate window, the key is inserted again as a duplicate.
 </details>
 
@@ -463,14 +481,14 @@ Restore after each.
 
 | Step | Pass / fail | What actually happened |
 |---|---|---|
-| validate (any warnings on `ddl` asset with no query) | | |
+| validate: does it flag the `ddl` asset ("No queries found")? Does `--fast` skip it? | | |
 | Day 1 counts match | | |
 | Day 2 counts match | | |
 | Re-run: only `txn_log` changed? | | |
 | `--exclude-tag landing --full-refresh` ran seeds and SQL assets in the right order? | | |
 | Day 3 counts match | | |
 | 3.5 time_interval vs delete+insert result | | |
-| 3.6 restricted warning text | | |
+| 3.6 restricted warning text, and is the date filter still in the rendered SQL? | | |
 | Break/fix 1 and 5 error messages | | |
 | `render` output understandable? | | |
 | Time taken | | |

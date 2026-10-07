@@ -33,17 +33,17 @@ Every run writes a JSON log under `logs/runs/<pipeline>/<run-id>.json`. You look
 Break a run on purpose and look at what is left behind. Add a `custom_check` or a not-null check that you know fails, or temporarily change a column name in an asset's query, then:
 
 ```bash
-bruin run lakota --exclude-tag landing --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota --exclude-tag landing --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 echo "exit code: $?"
 ```
 
 Record which assets succeeded, which failed, and which were skipped. Fix the problem and resume:
 
 ```bash
-bruin run --continue
+bruin run lakota --continue
 ```
 
-The docs say this reruns from the last failed asset and reuses the flags of the last run, and only works if the pipeline structure has not changed. Test both claims: first resume after fixing the asset, then add a new dependency to some asset and try `--continue` again. Record what Bruin says.
+Give `--continue` the pipeline path, as in Module 4: it finds the newest state file under `logs/runs/lakota/`, reuses its flags (dates, tags, full refresh), and refuses to run when asset names, `enabled: false` markers or upstream lists changed since that run. Editing a query does not trip it. Adding a `depends` entry does. If the last run succeeded it prints "No tasks to run." (CLI source, `cmd/run.go` and `pkg/scheduler/scheduler.go`). Test it: first resume after fixing the asset, then add a new dependency to some asset and try `--continue` again. Record what Bruin says.
 
 Compare the two resume mechanisms you now know:
 
@@ -54,7 +54,7 @@ Compare the two resume mechanisms you now know:
 | Reuses | the previous flags | the saved manifest |
 | Fails if | the pipeline structure changed | you change saved inputs |
 
-Check `logs/runs/lakota/` for the JSON of the failed run. List the keys in it with `python3 -m json.tool` and write down which fields you would use to build a run history table (run id, parameters, per-asset status, timestamps). UNVERIFIED: the exact schema, since the docs describe only a few top-level fields.
+Check `logs/runs/lakota/` for the JSON of the failed run. List the keys in it with `python3 -m json.tool` and write down which fields you would use to build a run history table (run id, parameters, per-asset status, timestamps). Module 4 lists the top-level keys from the CLI source (`cmdline`, `parameters`, `metadata`, `state`, `version`, `timestamp`, `run_id`, `compatibility_hash`). The file holds statuses, not timings, row counts or error text, so a run history table needs the wrapper's captured output as well. Confirm the key names on your machine.
 
 ## 11.3 Lab: alert when a run fails
 
@@ -67,12 +67,16 @@ Read `tools/run_and_alert.sh`. It:
 - posts `{"text": "..."}` to `ALERT_WEBHOOK_URL` when it is set (Teams, Slack and many other tools accept an incoming webhook, but their payload formats differ, UNVERIFIED for your tool),
 - always exits with Bruin's own exit code, so the scheduler also sees the failure.
 
+Bruin returns 0 on success and 1 on any failed run. It does not distinguish a failed asset from a failed quality check (a failed check, even a non-blocking one, also exits 1), so the alert text cannot tell them apart without reading the log. Local `bruin run` does not retry: `retries` and `rerun_cooldown` are parsed from the asset definition but nothing in the local runner reads them (CLI source). Retries come from your wrapper. If the target environment's name contains `prod`, add `--force` to the scheduled command, because no one is there to answer the prompt (Module 10, 10.8). For a cheap post-load verification run, `--only checks` runs just the quality checks and skips that prompt.
+
+The wrapper logs the command it was given, so keep secrets out of the arguments: `${VAR}` references in `.bruin.yml` are safe, a password passed as a flag is not.
+
 Test it with a run that works, then one that fails:
 
 ```bash
-bash "$COURSE/tools/run_and_alert.sh" nightly_ok -- run lakota --exclude-tag landing --start-date 2026-01-04 --end-date 2026-01-04
+bash "$COURSE/tools/run_and_alert.sh" nightly_ok -- run lakota --exclude-tag landing --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 # break something, then:
-bash "$COURSE/tools/run_and_alert.sh" nightly_fail -- run lakota --exclude-tag landing --start-date 2026-01-04 --end-date 2026-01-04
+bash "$COURSE/tools/run_and_alert.sh" nightly_fail -- run lakota --exclude-tag landing --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 echo "exit code: $?"
 cat logs/alerts/history.log
 ```
@@ -100,15 +104,12 @@ Stop the listener when finished (`kill %1`). Then decide:
 
 `bruin data-diff` compares two tables, including across connections. Typical uses: dev against production, migration checks, and drift monitoring. By default it exits 0 even when differences exist; `--fail-if-diff` changes that.
 
-Set up two comparable databases. If you did Module 10 you already have `bruin_course_dev`. Add a second connection in the default environment pointing at it (this is a regular connection, not an environment switch, so both tables can be addressed in one command):
+Set up two comparable databases. If you did Module 10 you already have `bruin_course_dev`. Add a second connection in the default environment pointing at it (this is a regular connection, not an environment switch, so both tables can be addressed in one command). Use the CLI, and run it with `LAKOTA_PW` unset so no reference is expanded into the file (Module 10, 10.4):
 
-```yaml
-        - name: "lakota-pg-dev"
-          username: "bruin_course"
-          password: "${LAKOTA_PW}"
-          host: "localhost"
-          port: 5432
-          database: "bruin_course_dev"
+```bash
+unset LAKOTA_PW
+bruin connections add --env default --type postgres --name lakota-pg-dev --credentials '{"username": "bruin_course", "password": "choose-a-simple-password", "host": "localhost", "port": 5432, "database": "bruin_course_dev"}'
+bruin connections test --name lakota-pg-dev
 ```
 
 Make sure both databases have `staging.customers`. They should differ, for example because dev was built on day 1 data only. Then:
@@ -124,7 +125,7 @@ Answer from the output:
 
 - What does the default (schema-only) comparison tell you, and what does `--full` add?
 - Row counts and column statistics: which columns differ and by how much? Use `--tolerance` to decide when a numeric difference is noise.
-- Create a schema difference on purpose (`alter table ... add column x int` in dev) and look at the generated `ALTER TABLE` suggestion. Which direction does it transform, and what does `--reverse` do?
+- Create a schema difference on purpose (`alter table ... add column x int` in dev) and look at the generated `ALTER TABLE` suggestion. Which direction does it transform, and what does `--reverse` do? The docs say the statements go to stdout and the comparison tables to stderr, and that by default Table2 is changed to match Table1. Check that `> alters.sql` captures only the SQL.
 - Compare two tables that are identical (the same table through both connections after you copy it). What does a clean result look like in plain and JSON output?
 
 ### Where it fits in a migration
@@ -139,19 +140,27 @@ Two commands help you bring existing objects under Bruin.
 
 ```bash
 cd ~/lakota-bruin
-bruin import database --connection lakota-src --schema src_core ./scratch_import
+bruin init empty scratch_import
+bruin import database --connection lakota-src --schema src_core scratch_import
+find scratch_import -type f
 ```
 
-Look at what it created: `scratch_import/pipeline.yml` and an asset per table. Open one. Record:
+`import database` needs an existing pipeline folder and writes into its `assets/` folder. It does not create the pipeline (Module 2, Step 0 covers this). Look at what it created: an asset per table. Open one. Record:
 
 - the asset type and name it chose, and what the generated definition contains (columns, descriptions, owner),
-- whether the assets are placeholders for external tables ("source" assets that run nothing) or runnable.
+- whether the assets are placeholders for external tables ("source" assets that run nothing) or runnable. Without `--ingestr` the CLI source generates `pg.source` placeholders that run nothing.
 
 Now the ingestr form, which creates runnable assets that copy the source table:
 
 ```bash
-bruin import database --connection lakota-src --schema src_core --ingestr --destination postgres ./scratch_import2
+bruin init empty scratch_import2
+# add to scratch_import2/pipeline.yml:
+#   default_connections:
+#     postgres: lakota-pg
+bruin import database --connection lakota-src --schema src_core --ingestr --destination postgres scratch_import2
 ```
+
+The ingestr form needs a default connection of the destination type in the target `pipeline.yml`.
 
 Compare with the assets you wrote by hand in Module 2. What did the import not know (an incremental key, a primary key, a merge strategy)? This tells you how much of a hand-written asset is business knowledge that no tool can scaffold.
 
@@ -182,10 +191,10 @@ Pull-request checks are the cheapest quality control available. Three commands:
 | Command | What it checks | Needs a database? |
 |---|---|---|
 | `bruin format <path> --fail-if-changed` | Asset files are in Bruin's canonical format | No |
-| `bruin validate <path> --fast` | Structure, dependencies, checks, templating. `--fast` skips query validation | UNVERIFIED for connection fields |
+| `bruin validate <path> --fast` | Structure, dependencies, checks, templating. `--fast` skips query validation | No |
 | `bruin unit-test <path>` | Mocked-input SQL unit tests: one read-only `SELECT` per test | Yes, on the asset's connection |
 
-Without `--fast`, `validate` runs a dry-run of each query on BigQuery and Snowflake, and not on Postgres. It also errors if a table the query reads does not exist yet.
+`--fast` runs only the offline rules and never opens a connection (`commands/validate.md`; the v0.11.773 source splits 44 fast rules from 4 query-validation rules). Without `--fast`, `validate` also runs the query-validation rules, which execute each rendered query against its connection, and that includes Postgres (`cmd/lint.go`, `pkg/postgres/db.go`). Such a run needs working credentials, and it fails for a query whose upstream table does not exist yet. Use `--fast` for pull requests and the full form where a database exists. `bruin format` on a directory skips files it cannot parse (CLI source, UNVERIFIED at runtime), so always run `validate` as well.
 
 Run the same checks locally with the course script:
 
@@ -222,14 +231,15 @@ jobs:
         run: bruin format . --fail-if-changed
       - name: Validate
         run: bruin validate . --fast
-      # Unit tests need a database connection. Provide .bruin.yml through a repository secret.
-      # - name: Create Bruin config
-      #   run: echo '${{ secrets.BRUIN_CONFIG }}' > .bruin.yml
+      # Unit tests need a database connection. BRUIN_CONFIG_FILE_CONTENT takes precedence
+      # over the file, so no file is written to the runner disk (Module 10, 10.4).
       # - name: Unit tests
+      #   env:
+      #     BRUIN_CONFIG_FILE_CONTENT: ${{ secrets.BRUIN_CONFIG }}
       #   run: bruin unit-test .
 ```
 
-Pin the Bruin version for repeatable builds: the docs show `version` as an optional parameter of the setup action, and the Azure Pipelines page shows installing a specific tag. Open a pull request with a deliberate formatting error and confirm the check fails. Record how long the job takes.
+Pin the Bruin version for repeatable builds: `cicd/github-action.md` lists `version` as an optional parameter of the setup action (`with: version: v0.11.773`), and the Azure Pipelines page shows installing a specific tag. The format and validate steps need no config. Open a pull request with a deliberate formatting error and confirm the check fails. Then break an asset header so it does not parse and run `bruin format .`: record whether it fails or silently skips the file. Record how long the job takes.
 
 The bank's platform is Azure, so also read `cicd/azure-pipelines.md`. It installs Bruin with `curl -LsSf https://getbruin.com/install/cli | sh`, then runs `bruin validate` and `bruin unit-test`. The docs show a Windows agent variant that installs through `bash install.sh`. Write the `azure-pipelines.yml` you would use. UNVERIFIED: whether your agents may download from `getbruin.com`; if not, you need an internal mirror of the binary, and that is an infrastructure question to raise early.
 
@@ -252,6 +262,7 @@ Notes to write down from the docs:
 - Its monitoring section covers email on failure and log rotation. Compare that with `run_and_alert.sh`.
 - Airflow can run Bruin with a `BashOperator` on workers or a `KubernetesOperator` with official images. If the bank already runs Airflow, Bruin becomes one task type among many, and the Airflow scheduler provides the cross-pipeline dependencies. That changes Module 9 from a necessity to a fallback.
 - `schedule` and `catchup` in `pipeline.yml` are read by an orchestrator. The CLI never reads them to schedule anything.
+- Bruin's local runner does not retry, so a cron or Task Scheduler job gets retries only from your wrapper. Notifications are a Bruin Cloud feature. An environment whose name contains `prod` needs `--force` in an unattended command (Module 10, 10.8).
 
 Pick one option for the bank's first production pipeline, and write down in five lines what must be true (server, account, secret handling, alerting, who is on call) before you would schedule it.
 
@@ -261,7 +272,7 @@ Cloud has `catchup`. You do not. Design catch-up for the CLI:
 
 1. On each start the scheduler wrapper computes the dates that should have run since the last `DONE` marker (`ctl.pipeline_status`).
 2. For each missing date it calls `bruin run` with explicit dates, in order.
-3. For a long gap it calls `bruin backfill` for the range.
+3. For a long gap it calls `bruin backfill` for the range. `bruin backfill` is the documented catch-up command (`commands/backfill.md`) and supports `--tag`, `--continue` and `--on-failure`. In a `prod`-named environment it refuses to start without `--force`.
 
 Decide which pipelines tolerate this (idempotent strategies: `time_interval`, `delete+insert`, `merge`) and which do not (`append` without protection). Which of your `lakota` assets would you not catch up automatically?
 
@@ -285,7 +296,7 @@ The docs command writes a single self-contained HTML file with every pipeline an
 `bruin run --query-annotations default` adds the asset, pipeline and step to SQL queries. On Snowflake the docs say the annotation becomes the `QUERY_TAG`, and custom `meta` and `tags` from the asset are merged into it, which lets you attribute warehouse cost and slow queries to an asset. Try it on Postgres:
 
 ```bash
-bruin run lakota/assets/mart/daily_txn_summary.sql --query-annotations default --start-date 2026-01-04 --end-date 2026-01-04 --verbose
+bruin run lakota/assets/mart/daily_txn_summary.sql --query-annotations default --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999" --verbose
 ```
 
 Find the annotation in the verbose output. UNVERIFIED: how it appears in `pg_stat_statements` or the Postgres log. In Module 6 you saw that SDK queries carry a `@bruin.config` comment; compare.
@@ -318,7 +329,7 @@ Translate one pipeline end to end on paper: for Module 3's `staging.accounts_cur
 
 ## Break/fix
 
-1. Run `bruin run --continue` in a folder where no run has failed.
+1. Run `bruin run lakota --continue` after a run that succeeded. Expect "No tasks to run."
 2. Run `bruin data-diff` with a missing connection prefix and no `--connection`.
 3. Run `bruin import database` against a connection type that is not supported.
 4. Run `bruin format` on a file with a syntax error in the header.
@@ -329,7 +340,7 @@ Translate one pipeline end to end on paper: for Module 3's `staging.accounts_cur
 <details>
 <summary>Answers</summary>
 
-1. Record the message. The docs say it continues from the last failed asset, so with none it should refuse or do nothing.
+1. Bruin prints "No tasks to run." and exits without running anything (CLI source). Record the message and the exit code.
 2. The docs say a table name without a connection prefix requires `--connection`. Expect an error.
 3. An error naming the unsupported type. Record the wording.
 4. Format should report the file as unparseable instead of rewriting it. Record the exact behavior.
@@ -352,9 +363,9 @@ Translate one pipeline end to end on paper: for Module 3's `staging.accounts_cur
 <summary>Answers</summary>
 
 1. Everything downstream of a failed asset is skipped, so an asset placed "last" does not run when something earlier failed. The failure is visible only to the process that started the run.
-2. `run --continue` reruns from the last failed asset using the last run's flags and breaks if the structure changed. `backfill --continue` resumes partitions of a saved plan.
+2. `run <pipeline> --continue` reruns from the last failed asset using the last run's flags and refuses to run if asset names, `enabled` flags or upstream lists changed. `backfill --continue` resumes partitions of a saved plan. `backfill --continue` resumes partitions of a saved plan.
 3. Exit 0. Use `--fail-if-diff` for a nonzero exit.
-4. `format --fail-if-changed`, and `validate --fast` (UNVERIFIED for connection fields). `unit-test` needs the asset's connection.
+4. `format --fail-if-changed` and `validate --fast`, which are offline and need no connection. Add the full `validate` and `unit-test` only where a database is reachable, because both need the asset's connection and credentials.
 5. The CLI does not schedule; the defaults (yesterday) are computed on the machine that starts the run. Explicit dates prevent a mismatch between pipelines or after a delay.
 6. A managed UI with logs and lineage across pipelines is the main one. Scheduling, catch-up, alerting and cross-pipeline waits can be built with scripts, as in Modules 9 and 11.
 7. Your answer. Typical: a server and service account, credentials handled through environment variables or a secret backend, alerting on failure and on missing runs, a run history, and a named owner.
@@ -365,13 +376,15 @@ Translate one pipeline end to end on paper: for Module 3's `staging.accounts_cur
 | Step | Pass / fail | What actually happened |
 |---|---|---|
 | 11.2 failed run leaves expected state | | |
-| 11.2 `bruin run --continue` and structure-change behavior | | |
+| 11.2 `bruin run lakota --continue`, "No tasks to run.", and the structure-change message | | |
 | 11.3 `run_and_alert.sh` ok and fail cases | | |
 | 11.3 webhook delivery to local listener | | |
 | 11.4 `data-diff` plain, full, json | | |
 | 11.4 `--fail-if-diff` exit code | | |
 | 11.4 ALTER suggestion and `--reverse` | | |
-| 11.5 `import database` output and runnable form | | |
+| 11.5 `import database` into an `init empty` pipeline: files, `pg.source` placeholders versus `--ingestr` assets | | |
+| 11.6 `format .` on an unparseable asset: fails or skips | | |
+| 11.6 full `validate` against Postgres (live query validation, missing upstream table) | | |
 | 11.5 `patch fill-asset-dependencies` result | | |
 | 11.5 `patch fill-columns-from-db` result | | |
 | 11.6 `ci_local.sh` (format, validate, unit-test) | | |

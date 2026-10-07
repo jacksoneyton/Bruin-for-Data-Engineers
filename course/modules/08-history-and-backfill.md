@@ -28,8 +28,8 @@ Start from a clean state with day 1 loaded and the Module 3 assets built:
 cd ~/lakota-bruin
 bash "$COURSE/tools/reset.sh" warehouse
 bash "$COURSE/tools/reset.sh" source 1
-bruin run lakota --tag landing --start-date 2000-01-01 --end-date 2026-01-02
-bruin run lakota --exclude-tag landing --full-refresh --start-date 2026-01-01 --end-date 2026-01-02
+bruin run lakota --tag landing --start-date 2000-01-01 --end-date "2026-01-02 23:59:59.999999"
+bruin run lakota --exclude-tag landing --full-refresh --start-date 2026-01-01 --end-date "2026-01-02 23:59:59.999999"
 ```
 
 Create the folder:
@@ -85,11 +85,11 @@ SELECT customer_id,
 FROM staging.customers
 ```
 
-The casts matter: the docs say Postgres rejects `TIMESTAMPTZ` for the `incremental_key`. UNVERIFIED: which type ingestr gave the landing column. Record what `\d landing.core_customers` shows (use `bruin query --connection lakota-pg --query "select column_name, data_type from information_schema.columns where table_schema='landing' and table_name='core_customers'"`).
+The casts matter: the docs say Postgres rejects `TIMESTAMPTZ` for the `incremental_key`, so the query casts it to `timestamp`. The landing column type is whatever ingestr created. If it is already `timestamp`, the cast is harmless. Record the type with (use `bruin query --connection lakota-pg --query "select column_name, data_type from information_schema.columns where table_schema='landing' and table_name='core_customers'"`).
 
 ### `lakota/assets/hist/accounts_hist.sql` (scd2_by_column)
 
-Pretend the account source has no trustworthy change timestamp. `scd2_by_column` compares every declared column and stamps `_valid_from` with the processing time.
+Pretend the account source has no trustworthy change timestamp. `scd2_by_column` compares every declared column and stamps `_valid_from` with the processing time. If the source does record when a row changed, `scd2_by_column` also accepts an `incremental_key`: new versions then take `_valid_from` from that column, and a version closed by a change takes `_valid_until` from the new version's key. A version closed because the record left the source still uses `CURRENT_TIMESTAMP` (`assets/materialization.md`, "Use business timestamps instead of processing time"). This lab does not set it.
 
 ```sql
 /* @bruin
@@ -178,8 +178,8 @@ Validate and render:
 
 ```bash
 bruin validate lakota
-bruin render lakota/assets/hist/customers_hist.sql --start-date 2026-01-01 --end-date 2026-01-02
-bruin render lakota/assets/hist/customers_hist.sql --start-date 2026-01-01 --end-date 2026-01-02 --full-refresh
+bruin render lakota/assets/hist/customers_hist.sql --start-date 2026-01-01 --end-date "2026-01-02 23:59:59.999999"
+bruin render lakota/assets/hist/customers_hist.sql --start-date 2026-01-01 --end-date "2026-01-02 23:59:59.999999" --full-refresh
 ```
 
 Read both renders. Note the statements for the first run versus an incremental run and how `_valid_from`, `_valid_until` and `_is_current` are computed.
@@ -191,7 +191,7 @@ Read both renders. Note the statements for the first run versus an incremental r
 The setup commands above already ran `--full-refresh` over everything outside landing, which created the three hist tables. If you added the files after that run, create them now:
 
 ```bash
-bruin run lakota --tag hist --full-refresh --start-date 2026-01-01 --end-date 2026-01-02
+bruin run lakota --tag hist --full-refresh --start-date 2026-01-01 --end-date "2026-01-02 23:59:59.999999"
 ```
 
 Expected after day 1:
@@ -214,7 +214,7 @@ For `customers_hist`, `_valid_from` should equal `updated_at`. For `accounts_his
 
 ```bash
 cd "$COURSE/data" && psql "$PGURL_SRC" -f sql/02_source_day2.sql && cd ~/lakota-bruin
-bruin run lakota --start-date 2026-01-03 --end-date 2026-01-03
+bruin run lakota --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 ```
 
 Expected:
@@ -243,7 +243,7 @@ Account 1006 was hard-deleted in the source on day 2 (Module 2: the landing merg
 
 ```bash
 cd "$COURSE/data" && psql "$PGURL_SRC" -f sql/03_source_day3.sql && cd ~/lakota-bruin
-bruin run lakota --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 Expected:
@@ -259,7 +259,7 @@ Expected:
 Run day 3 again with the same window:
 
 ```bash
-bruin run lakota --tag hist --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota --tag hist --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 The counts must not change. If `accounts_hist` grows, record it as a finding.
@@ -269,7 +269,7 @@ The counts must not change. If `accounts_hist` grows, record it as a finding.
 An SCD2 table rebuilt with `--full-refresh` loses its history. Prove it on a copy of the data first, not on a table you care about:
 
 ```bash
-bruin run lakota/assets/hist/accounts_hist.sql --full-refresh --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota/assets/hist/accounts_hist.sql --full-refresh --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 bruin query --connection lakota-pg --query "select count(*), count(*) filter (where _is_current) from hist.accounts_hist"
 ```
 
@@ -283,8 +283,8 @@ full_refresh_restricted: true
 
 Two tests:
 
-1. With the table present and the flag set, run `bruin run lakota/assets/hist/customers_hist.sql --full-refresh --start-date 2026-01-04 --end-date 2026-01-04`. The docs say the table is not dropped, the asset runs with its normal strategy, and a warning is printed. Confirm that history (82 rows) is intact.
-2. Drop the table (`psql "$PGURL" -c "drop table hist.accounts_hist"`) and run the same command for `hist.accounts_hist`. A restricted asset keeps its normal strategy, and an incremental strategy needs an existing table, so the docs imply this fails. UNVERIFIED: record the exact result. If it fails, the fix is to create the table once with the flag removed.
+1. With the table present and the flag set, run `bruin run lakota/assets/hist/customers_hist.sql --full-refresh --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"`. The docs say the table is not dropped, the asset runs with its normal strategy, and a warning is printed. Confirm that history (82 rows) is intact.
+2. Drop the table (`psql "$PGURL" -c "drop table hist.accounts_hist"`) and run the same command for `hist.accounts_hist`. A restricted asset keeps its normal strategy. On Postgres the normal SCD2 statement is a `MERGE INTO` the target, and only the full-refresh path creates the table (`pkg/postgres/materialization.go`), so with the table missing the run should fail with a relation-does-not-exist error. UNVERIFIED at runtime: record the exact text. The fix is to create the table once with the restriction removed (or on an environment without it), then restore the flag. This is also why a restricted asset in a new environment needs a one-time bootstrap run.
 
 Production habit: set `full_refresh_restricted: true` for the whole environment in `.bruin.yml` (`environments.<name>.config.full_refresh_restricted: true`) so nobody has to remember the flag per asset. Module 10 covers environments.
 
@@ -299,7 +299,7 @@ Use `mart.daily_txn_summary` (time_interval, date granularity) as the target. It
 The transactions in the dataset fall between 2026-01-01 and 2026-01-04. Make sure all three source days are loaded and landing is current, then empty the target while keeping its structure:
 
 ```bash
-bruin run lakota --tag landing --start-date 2000-01-01 --end-date 2026-01-04
+bruin run lakota --tag landing --start-date 2000-01-01 --end-date "2026-01-04 23:59:59.999999"
 psql "$PGURL" -c "truncate mart.daily_txn_summary"
 ```
 
@@ -314,7 +314,7 @@ bruin backfill lakota/assets/mart/daily_txn_summary.sql --start-date 2026-01-01 
 
 Questions to answer from the output:
 
-- How many partitions does the daily plan have? (Date-only end values are inclusive.)
+- How many partitions does the daily plan have? (`bruin backfill` treats a date-only end value as inclusive, unlike `bruin run`, where a date-only end is midnight at the start of that day. Record the `--dry-run --output json` result and state the rule it shows.)
 - What `--start-date` and `--end-date` does each child run receive? (Each end is the next boundary minus one microsecond.)
 - How does the monthly plan treat a partial month?
 - What parallelism is effective and why?
@@ -325,7 +325,7 @@ Then execute:
 bruin backfill lakota/assets/mart/daily_txn_summary.sql --start-date 2026-01-01 --end-date 2026-01-04 --partition daily --max-parallel 1
 ```
 
-Note the backfill ID and the resume command it prints at the start. Check the result:
+`bruin backfill` runs one `bruin run` per partition and passes `--sensor-mode`, `--apply-interval-modifiers` and `--var` through to each child (source-derived, `cmd/backfill.go`). A sensor in the pipeline therefore runs once per partition. Bruin does not check that the partition size fits the asset's granularity: `--partition hourly` on a date-granularity asset should produce 24 children per day that each replace the same date (UNVERIFIED at runtime). Note the backfill ID and the resume command it prints at the start. Check the result:
 
 ```bash
 bruin query --connection lakota-pg --query "select count(*), sum(txn_count) from mart.daily_txn_summary"
@@ -371,13 +371,13 @@ bruin backfill --continue <backfill-id>
 
 Expected: successful partitions are skipped by default, Jan 3 and Jan 4 run, and the table matches the earlier result (16 rows, 325 transactions). Pipeline files are read again on resume, which is why fixing the asset works.
 
-Repeat once more with `--on-failure continue` and `--rerun failed` to see the other policies. Then try `--max-parallel 2` on a 4-partition plan and read the printed effective parallelism: connection limits can cap it.
+Repeat once more with `--on-failure continue` and `--rerun failed` to see the other policies. Then try `--max-parallel 2` on a 4-partition plan and read the printed effective parallelism. The flag help says connection limits may reduce it, and the pipeline's `max_concurrent_assets` setting and connection-level `max_concurrent_assets` (Module 10) are the ones to look at (source-derived, UNVERIFIED which applies).
 
 ### What backfill is not for
 
 Think through the SCD2 assets in this module:
 
-- A backfill over `hist.accounts_hist` would stamp each partition with the current time, because `scd2_by_column` uses `CURRENT_TIMESTAMP` and reads the current snapshot rather than a date window. History cannot be reconstructed from a snapshot source this way.
+- A backfill over `hist.accounts_hist` would stamp each partition with the current time, because without an `incremental_key` `scd2_by_column` uses `CURRENT_TIMESTAMP` and compares the current snapshot rather than a date window. History cannot be reconstructed from a snapshot source this way. With an `incremental_key` that holds a real business timestamp the versions carry the source's own times, but the query still has to return the historical rows.
 - `scd2_by_time` can only replay history when your query returns the historical versions with their own timestamps.
 
 Write one paragraph in your notes: for which of your real tables at the bank would you use a backfill, and for which would you need a different approach (reloading from raw change records)?
@@ -497,7 +497,7 @@ Questions:
 3. Declare a column named `_is_current` in an SCD2 asset and validate.
 4. Leave a column out of `columns` that your query selects. Change that column in the source and rerun. Is the change detected?
 5. Run `bruin backfill ... --rerun failed` without `--continue`.
-6. Run a dry-run backfill with `--partition hourly` against `mart.daily_txn_summary` (date granularity). Read the docs on which granularity hourly partitions need, and record whether Bruin warns.
+6. Run a dry-run backfill with `--partition hourly` against `mart.daily_txn_summary` (date granularity). Read the docs on which granularity hourly partitions need, and record whether Bruin warns. The source builds partitions from the flag only, so expect no warning and 96 children for 4 days.
 7. Change a date range while resuming a backfill with `--continue`.
 8. Start a backfill and press Ctrl+C mid-run. What state do the partitions have? Resume it.
 
@@ -509,7 +509,7 @@ Questions:
 3. `_valid_from`, `_valid_until` and `_is_current` are reserved. Using them in `columns` is a validation error.
 4. Per the docs only declared columns are compared and carried. The undeclared column's change is not detected. Record what you saw.
 5. The docs say `--rerun` is accepted only together with `--continue`. Expect an error.
-6. The docs say hourly partitions need timestamp granularity, since date granularity replaces a whole date. Record what Bruin does in the dry run.
+6. The docs say hourly partitions need timestamp granularity, since date granularity replaces a whole date. Source reading says Bruin does not warn (UNVERIFIED at runtime). Record what the dry run prints.
 7. Resume reuses the saved range and inputs. Create a new backfill to change them. Only execution controls can change on resume.
 8. Queued and interrupted partitions stay resumable. Cancellation propagates to active children.
 </details>
@@ -532,8 +532,8 @@ Questions:
 3. `full_refresh_restricted: true` on the asset, or `environments.<name>.config.full_refresh_restricted: true` in `.bruin.yml`.
 4. `9999-12-31` at midnight on PostgreSQL.
 5. The partition may run again. Use idempotent materializations (`time_interval`, `delete+insert`, `merge`), not `append`.
-6. `append`, `merge` and `time_interval` accumulate and are suitable. `create+replace` replaces the table on every partition.
-7. 4. Timestamp end values are exclusive, so `--end-date 2026-01-04T00:00:00Z` would create 3.
+6. `time_interval`, `delete+insert` and `merge` are suitable because a partition can run again without duplicating rows. `append` duplicates on a rerun. `create+replace` replaces the whole table on every partition, so only the last partition survives.
+7. Four partitions. Timestamp end values are exclusive, so `--end-date 2026-01-04T00:00:00Z` would create 3.
 </details>
 
 ## Concept answers (8.1)
@@ -557,7 +557,9 @@ Questions:
 | 8.3 account 1006 still current in accounts_hist | | |
 | 8.3 idempotent rerun of day 3 | | |
 | 8.4 full refresh drops history | | |
-| 8.4 restricted asset: first run with no table | | |
+| 8.4 restricted asset: first run with no table (exact error text) | | |
+| 8.5 hourly partitions on a date asset: warning or not, child count | | |
+| 8.5 effective parallelism with `--max-parallel 2` | | |
 | 8.4 restricted asset: warning and history kept | | |
 | 8.5 backfill dry run partitions and child dates | | |
 | 8.5 backfill result 16 rows / 325 txns | | |

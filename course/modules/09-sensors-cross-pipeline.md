@@ -34,7 +34,7 @@ A cross-pipeline dependency needs three things:
 
 The marker is a contract between teams: pipeline name plus data date plus status. Everything else in the other pipeline can change.
 
-Bruin Cloud does this with `uri` entries in `depends` and a managed scheduler. The CLI has neither. The pattern above gives you the same behavior for the cases that matter: the downstream does not run on incomplete data, and it runs soon after the upstream finishes.
+Bruin Cloud does this with `uri` entries in `depends` and a managed scheduler (`cloud/cross-pipeline.md`; its wait is 12 hours, which is unrelated to the 24 hour default of a CLI sensor). The CLI reads `uri` entries for lineage and `bruin validate`, but it does not wait on them and has no scheduler (source-derived, UNVERIFIED at runtime). To show an upstream table in lineage, declare it in the downstream pipeline as a symbolic `pg.source` asset. The waiting is what the sensor and the wrapper provide. The pattern above gives you the same behavior for the cases that matter: the downstream does not run on incomplete data, and it runs soon after the upstream finishes.
 
 What it does not give you: automatic lineage across pipelines, a UI showing the waits, catch-up of missed intervals, and notifications. You supply those yourself (Module 11).
 
@@ -86,7 +86,7 @@ Make sure the table does not exist, then work through the modes:
 ```bash
 psql "$PGURL" -c "drop table if exists ops.late_arrival"
 bruin validate sensor_lab
-bruin run sensor_lab --start-date 2026-01-04 --end-date 2026-01-04
+bruin run sensor_lab --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 echo "exit code: $?"
 ```
 
@@ -99,8 +99,8 @@ Now `skip` and `wait`. For `wait`, use a second terminal to create the table and
 
 ```bash
 # terminal 1
-bruin run sensor_lab --sensor-mode skip --start-date 2026-01-04 --end-date 2026-01-04
-bruin run sensor_lab --sensor-mode wait --start-date 2026-01-04 --end-date 2026-01-04
+bruin run sensor_lab --sensor-mode skip --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
+bruin run sensor_lab --sensor-mode wait --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 ```bash
@@ -112,9 +112,9 @@ psql "$PGURL" -c "insert into ops.late_arrival values ('2026-01-04')"
 
 Expected: `skip` succeeds immediately even though nothing exists (note what that means for safety, you will use it as a danger example later). `wait` keeps polling about every 5 seconds, passes the table sensor once the table exists, keeps polling the query sensor until the row exists, then both succeed.
 
-Then test the timeout: drop the table, shorten `timeout` to `20s`, run with `--sensor-mode wait`, and record how long it took to fail and what the message says. Finally test a sensor whose table never exists while using `wait` against `pg.sensor.query` only (remove the `depends` and the table sensor): does a query against a missing table keep polling or fail at once? UNVERIFIED, and it decides whether you need the table sensor in front of the query sensor.
+Then test the timeout: drop the table, shorten `timeout` to `20s`, run with `--sensor-mode wait`, and record how long it took to fail and what the message says. Finally test a sensor whose table never exists while using `wait` against `pg.sensor.query` only (remove the `depends` and the table sensor): does a query against a missing table keep polling or fail at once? The source says it fails at once, even under `wait`, because only an unmet condition keeps polling and a query error returns immediately (`pkg/ansisql/operator.go`; UNVERIFIED at runtime, record the message). That is why the table sensor goes in front of the query sensor. `pg.sensor.table` looks the table up in `pg_catalog.pg_tables`, so it matches real tables only and a view never satisfies it.
 
-Then settle what "returns any results" means. The BigQuery docs use `select count(*) > 0`, and the Postgres docs use `select exists(...)`. Both always return exactly one row, true or false, so the sensor cannot be testing only for the presence of a row. Test it directly with a throwaway sensor (change the `query` of `ops.wait_rows` and run with `--sensor-mode once`):
+Then settle what "returns any results" means. The BigQuery docs use `select count(*) > 0`, and the Postgres docs use `select exists(...)`. Both always return exactly one row, true or false, so the sensor cannot be testing only for the presence of a row. Source reading says a `pg.sensor.query` passes when the result is exactly one cell that casts to an integer above 0 (`true` casts to 1). Zero rows and `NULL` count as 0, so the sensor keeps waiting. More than one row or column is an error, not a pass. Predict each row of the table below from that rule before you run it. Test it directly with a throwaway sensor (change the `query` of `ops.wait_rows` and run with `--sensor-mode once`):
 
 | Query | Rows returned | Does the sensor pass? |
 |---|---|---|
@@ -124,7 +124,7 @@ Then settle what "returns any results" means. The BigQuery docs use `select coun
 | `select 0` | 1 row, 0 | |
 | `select 5` | 1 row, 5 | |
 
-Record the table. The queries in this module (`select 1 ... where <ready condition>`) pass under both readings, but you should know which one your Bruin version uses.
+Record the table. Predicted from source: `select true` passes, `select false` does not, no rows does not, `select 0` does not, `select 5` passes. Add a sixth test, `select 1 union all select 1`, and expect an error about multiple results. A zero-row query such as `select 1 ... where <ready condition>` passes only when the condition is true because an empty result is not ready.
 
 Drop the scratch pipeline when finished: `rm -r sensor_lab` and `psql "$PGURL" -c "drop table if exists ops.late_arrival"`.
 
@@ -203,7 +203,7 @@ mkdir -p lakota_reports/assets/gate lakota_reports/assets/reports lakota_reports
 cp lakota/pyproject.toml lakota_reports/pyproject.toml
 ```
 
-The `pyproject.toml` copy matters for Python assets later: Bruin looks for the closest dependency file walking up from the asset folder, so a second pipeline folder needs its own (or one at the repository root).
+The `pyproject.toml` copy matters for Python assets later: Bruin looks for the closest dependency file walking up from the asset folder to the repository root. One file at the repository root would serve both pipelines. This course keeps one per pipeline folder.
 
 `lakota_reports/pipeline.yml`:
 
@@ -293,8 +293,8 @@ bruin validate lakota_reports
 ```bash
 bash "$COURSE/tools/reset.sh" warehouse
 bash "$COURSE/tools/reset.sh" source 3
-bruin run lakota --tag landing --start-date 2000-01-01 --end-date 2026-01-04
-bruin run lakota --exclude-tag landing --full-refresh --start-date 2026-01-01 --end-date 2026-01-04
+bruin run lakota --tag landing --start-date 2000-01-01 --end-date "2026-01-04 23:59:59.999999"
+bruin run lakota --exclude-tag landing --full-refresh --start-date 2026-01-01 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 The second command ends by writing the producer marker for 2026-01-04. Check it, then remove it so you can watch the consumer wait:
@@ -307,7 +307,7 @@ psql "$PGURL" -c "delete from ctl.pipeline_status"
 ### Experiment 1: the consumer refuses to run early
 
 ```bash
-bruin run lakota_reports --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota_reports --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 echo "exit code: $?"
 bruin query --connection lakota-pg --query "select to_regclass('lakota_reports.txn_mix')"
 ```
@@ -317,7 +317,7 @@ Expected: the sensor fails in `once` mode, `lakota_reports.txn_mix` and `ctl.mar
 Now see why `skip` is dangerous:
 
 ```bash
-bruin run lakota_reports --sensor-mode skip --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota_reports --sensor-mode skip --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 psql "$PGURL" -c "delete from ctl.pipeline_status where pipeline_name = 'lakota_reports'"
 ```
 
@@ -327,18 +327,18 @@ The report ran with no marker present. `skip` is for local development only. Nev
 
 ```bash
 # terminal 1: starts first and waits (polls every 10 seconds)
-bruin run lakota_reports --sensor-mode wait --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota_reports --sensor-mode wait --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 ```bash
 # terminal 2: after at least two polls, run the mart layer and everything downstream of it for the same date
-bruin run lakota --tag mart --downstream --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota --tag mart --downstream --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 The mart assets are idempotent, so a repeat run is safe. If the marker asset did not run because some of its dependencies were not selected, run it directly:
 
 ```bash
-bruin run lakota/assets/ctl/mark_lakota_done.sql --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota/assets/ctl/mark_lakota_done.sql --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 Expected: within about 10 seconds of the marker appearing, terminal 1 passes the sensor, builds `lakota_reports.txn_mix` and writes the consumer marker. Check:
@@ -348,13 +348,13 @@ bruin query --connection lakota-pg --query "select txn_date, txn_type, txn_count
 bruin query --connection lakota-pg --query "select pipeline_name, data_date, status, completed_at from ctl.pipeline_status order by completed_at"
 ```
 
-Expected: 4 rows, `txn_count` summing to 85, `pct_of_day` summing to 100, and two marker rows for 2026-01-04.
+Expected: 4 rows, `txn_count` summing to 85, `pct_of_day` summing to about 100 (each value is rounded to 2 decimals, so the exact sum is 100.01), and two marker rows for 2026-01-04.
 
 A single long `wait` job is the simplest trigger. Its weaknesses: it holds a process (and a database connection poll) for as long as it waits, the default timeout is 24 hours, and if the machine reboots or the job is killed, nothing restarts it. That is why the polling approach in 9.5 is usually better for production.
 
 ### Experiment 3: the wrong data date
 
-Run the consumer for a date with no marker (`--start-date 2026-01-05 --end-date 2026-01-05 --sensor-mode once`). It must fail. This is the property that matters most: a consumer must never read yesterday's marker for today's data. Now think about the default dates: with no `--start-date`, Bruin uses "beginning of yesterday" to "end of yesterday" (UTC or local?). UNVERIFIED which timezone. If your scheduler and the producer disagree on what "yesterday" means near midnight, the consumer waits on a date that the producer never marks. Write down how you will pin the date in production (always pass explicit dates from the scheduler).
+Run the consumer for a date with no marker (`--start-date 2026-01-05 --end-date "2026-01-05 23:59:59.999999" --sensor-mode once`). It must fail. This is the property that matters most: a consumer must never read yesterday's marker for today's data. Now think about the default dates: with no `--start-date`, Bruin uses "beginning of yesterday" to "end of yesterday" (UTC or local?). The source builds the default window from the machine's local calendar date for yesterday and labels the times UTC (`cmd/run.go`), so near midnight the scheduler's host clock decides which day that is. If your scheduler and the producer disagree on what "yesterday" means near midnight, the consumer waits on a date that the producer never marks. Write down how you will pin the date in production (always pass explicit dates from the scheduler).
 
 ## 9.5 Lab: scheduled polling inside a window
 
@@ -388,7 +388,7 @@ export WINDOW_START_HOUR=0 WINDOW_END_HOUR=24
 psql "$PGURL" -c "delete from ctl.pipeline_status"
 
 bash "$COURSE/tools/run_if_ready.sh" lakota lakota_reports 2026-01-04    # 1: not ready, exits 0
-bruin run lakota/assets/ctl/mark_lakota_done.sql --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota/assets/ctl/mark_lakota_done.sql --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 bash "$COURSE/tools/run_if_ready.sh" lakota lakota_reports 2026-01-04    # 2: runs the consumer
 bash "$COURSE/tools/run_if_ready.sh" lakota lakota_reports 2026-01-04    # 3: already done, exits 0
 ```
@@ -428,7 +428,7 @@ Task Scheduler repeats every 15 minutes all day. The window logic lives in the s
 */15 5-8 * * *  cd /home/you/lakota-bruin && bash course/tools/run_if_ready.sh lakota lakota_reports >> /home/you/run_if_ready.log 2>&1
 ```
 
-Without a `$3` date argument, the script uses yesterday (`date -d yesterday`) as the data date. Decide for your own pipelines whether that matches how the upstream defines its date, and pass the date explicitly if it does not.
+Without a `$3` date argument, the script uses yesterday (`date -d yesterday`, GNU `date`; on macOS install coreutils and use `gdate`) as the data date. Each `bruin query` call in the script also writes a small log under `logs/queries`. Prune old ones with `find logs -mtime +7 -delete` if the poller runs for weeks, and pass `--environment` when the connection is defined per environment. Decide for your own pipelines whether that matches how the upstream defines its date, and pass the date explicitly if it does not.
 
 ### Choosing between the triggers
 
@@ -487,7 +487,7 @@ while True:
 Run it three ways:
 
 ```bash
-bruin run lakota_reports/assets/gate/wait_for_drop_file.py --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota_reports/assets/gate/wait_for_drop_file.py --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 echo "exit code: $?"
 ```
 
@@ -502,7 +502,7 @@ printf 'txn_id,amount\n1,10.00\n' > ~/lakota-drop/settlement_2026-01-04.csv
 
 3. Override a variable on the command line to shorten the wait: `--var drop_wait_seconds=10`.
 
-Record which Python version and environment Bruin set up, how long the first uv startup took, and whether the printed lines appear live or only at the end (matters when you watch a long wait).
+Record which Python version and environment Bruin set up, how long the first uv startup took, and whether the printed lines appear live or only at the end (matters when you watch a long wait). The command runner streams the script's output to the console as it arrives (source-derived), so expect live lines.
 
 Now make the report depend on both gates. Edit `lakota_reports/assets/reports/txn_mix.sql` so that `depends` lists `ctl.wait_lakota` and `ctl.wait_drop_file`. Run the consumer with and without the file present.
 
@@ -518,10 +518,11 @@ The cost is that you own the timeout, the polling and the error messages, and th
 
 Sensors answer "is it ready?" Sometimes the answer is "this should not run today". Two tools from Module 7 belong here:
 
-- `enabled: "{{ var.some_flag }}"` on an asset skips it when the rendered value is `false`. Downstream assets can continue.
+- `enabled: false` on an asset skips it, and downstream assets can continue. A templated `enabled` is rendered only in a pipeline that declares `variants` (Module 7, 7.6). In a plain pipeline such as `lakota_reports`, `enabled: "{{ var.x }}"` is not resolved, so do not use it there.
+- `--exclude-tag` and `--tag` choose assets at run time.
 - A scheduler wrapper decides before Bruin starts. A weekend or bank holiday check belongs in the wrapper (`date +%u` for weekday), because a gate inside the pipeline either fails the run or skips it with no record.
 
-Exercise: add a pipeline variable `run_reports` (boolean, default `true`) to `lakota_reports`, put `enabled: "{{ var.run_reports }}"` on `lakota_reports.txn_mix`, and run once with `--var run_reports=false`. Record how Bruin reports the skipped asset and whether `ctl.mark_reports_done` still runs. Decide whether that is what you want a consumer marker to mean, and if not, what the marker should depend on.
+Exercise: run `bruin run lakota_reports --exclude-tag reports --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999" --sensor-mode skip`. `lakota_reports.txn_mix` carries the `reports` tag and `ctl.mark_reports_done` does not. Record whether the marker runs although `lakota_reports.txn_mix` did not. If it does, the marker claims completion for a report that was never built. Decide whether that is what you want a consumer marker to mean, and if not, what the marker should depend on or which tag it should carry. Then put `enabled: "{{ var.run_reports }}"` on `txn_mix` in this plain pipeline and run `bruin validate lakota_reports`. Record what Bruin says (the source says reading an unresolved template fails with `enabled contains unresolved template`, UNVERIFIED at runtime).
 
 ## 9.8 Hardening exercises
 
@@ -548,11 +549,11 @@ Each of these is a real production failure. For each, write down the failure, th
 <summary>Answers</summary>
 
 1. Variables in YAML-style assets are only supported inside the value of `parameters`. Validation or rendering fails.
-2. Combinators are not supported. Use `90m`. Expect a validation error or the default 24h applying (the docs say unset, invalid or zero falls back to 24h). Record which.
-3. Record what Bruin does. UNVERIFIED.
-4. Which result passes depends on what you found in 9.3. If a returned `false` or `0` fails the sensor, an inverted condition waits forever or passes at the wrong time. If any returned row passes, `select count(*) = 0` passes immediately. Either way, write the condition so that it is true or returns a row only when the data is ready.
+2. Combinators are not supported. Use `90m`. There is no error. An unparseable `timeout` falls back to 24 hours without a warning (`GetSensorTimeout` in `pkg/helpers/helpers.go`, matching the docs), so `1h30m` makes the sensor wait a day. Prefer `90m`. Record how you could tell. The asset-level `timeout` in `definition-schema.md` is a different setting and uses a different duration syntax.
+3. An unparseable `poke_interval` falls back to 30 seconds. `0` is parsed as given (source-derived), so under `wait` the loop re-queries without pausing. Record what you see. Under `once` and `skip` the value does not matter.
+4. Which result passes depends on what you found in 9.3. A returned `false` or `0` is not ready, and `true` or any value above 0 passes. `select count(*) = 0` returns `true` when the marker is missing, so it passes immediately when the data is not there. Write the condition so that the value is above 0 only when the data is ready, for example `select count(*) from ctl.pipeline_status where ...` or `select exists(...)`.
 5. Without `depends`, Bruin may run the report in parallel with the sensor. The dependency is what orders them. Always list the sensor in `depends`.
-6. UNVERIFIED. Record whether it fails at once or polls.
+6. For a `pg.sensor.query` it fails at once, because a query error is not an unmet condition (source-derived, UNVERIFIED at runtime). A `pg.sensor.table` with a typo is different: the table check is a count that returns 0, so it keeps polling until `timeout`. Record both.
 7. The `trap ... EXIT` removes the lock on normal exit and on Ctrl+C. A hard kill leaves it behind, and the next poll will exit 0 forever. Decide how you will detect stale locks (age check, or use a `flock`-style approach on Linux).
 </details>
 
@@ -598,12 +599,12 @@ Each of these is a real production failure. For each, write down the failure, th
 | 9.3 `wait` mode with two terminals | | |
 | 9.3 timeout behavior and message | | |
 | 9.3 `pg.sensor.query` against a missing table | | |
-| 9.3 what passes: true, false, no rows, 0, 5 | | |
+| 9.3 what passes: true, false, no rows, 0, 5, and the multi-row error text | | |
 | 9.3 double-quote trap in the docs example | | |
 | 9.4 consumer refuses to run early | | |
 | 9.4 `skip` runs without a marker | | |
 | 9.4 wait mode passes after the producer marker | | |
-| 9.4 row counts (4 rows, 85 txns, 100 pct) | | |
+| 9.4 row counts (4 rows, 85 txns, pct_of_day sums to 100.01) | | |
 | 9.4 explicit date versus default date | | |
 | 9.5 wrapper: not ready, ready, already done | | |
 | 9.5 wrapper: late alert exit code 2 | | |
@@ -611,6 +612,8 @@ Each of these is a real production failure. For each, write down the failure, th
 | 9.5 `bruin query --output csv` shape | | |
 | 9.5 scheduled task fires and finds bruin on PATH | | |
 | 9.6 Python gate timeout, found file | | |
-| 9.7 `enabled` false and the consumer marker | | |
+| 9.7 `--exclude-tag reports`: does the consumer marker still run | | |
+| 9.7 plain pipeline with templated `enabled`: validate result | | |
+| 9.8 `timeout: 1h30m`: no error, 24h wait | | |
 | 9.8 exercises completed | | |
 | Time taken | | |

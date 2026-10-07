@@ -44,6 +44,12 @@ The consequence: you, or a scheduler, own the window. A load is only as correct 
 
 `create+replace`, `append`, `merge`, `delete+insert`, `truncate+insert`, set under `materialization.strategy`. ingestr's own `scd2` strategy is not supported through Bruin ingestr assets. `merge` needs primary keys, which you mark with `primary_key: true` on columns. Source: `assets/ingestr.md`.
 
+UNVERIFIED: `truncate+insert`. The Bruin page lists it as accepted for Postgres. The ingestr page for the `ingest` command (`commands/ingest`) says the former `truncate+insert` strategy "has been removed" and points to `replace`. The two pages disagree about the ingestr version Bruin installs. This course does not use `truncate+insert`. If you want to settle it, run a probe asset with it and record the result.
+
+### Which ingestr Bruin runs
+
+Bruin installs ingestr itself, and an asset can choose the engine with `parameters.version`: `v0`, `v1`, or a full pin such as `v1.0.71` (`assets/ingestr.md`, parameter table). Without it, Bruin uses its built-in default for the CLI version you installed (v1 in v0.11.773; the CLI source pins ingestr 1.1.63 for `v1`). That is one more reason this course pins the Bruin version in Module 0.
+
 ## 2.2 Prepare the source system
 
 The source system is the `src_core` schema in `bruin_course_src`. A SQL script creates it and loads day 1.
@@ -72,7 +78,44 @@ Facts about the source that you will rely on (they come from the generator in `c
 
 ## 2.3 Lab: landing tables
 
-Work in `lakota-bruin`. Add to `lakota/assets/`:
+Work in `lakota-bruin`.
+
+### Step 0: let Bruin draft the assets
+
+You would never write twenty ingestr assets by hand for a real source schema. `bruin import database` reads the source's tables and writes one asset per table (`commands/import.md`). It needs an existing pipeline folder to write into: the command finds the pipeline by walking up from the path you give it (CLI source), so it does not create one, even though the docs wording suggests it does. Use a throwaway pipeline:
+
+```bash
+cd ~/lakota-bruin
+bruin init empty scratch_import
+cat > scratch_import/pipeline.yml <<'EOF'
+name: scratch_import
+default_connections:
+  postgres: "lakota-pg"
+EOF
+rm scratch_import/assets/placeholder
+```
+
+The source schema has to exist before you can import from it. Apply the day 1 script from 2.2 first if you have not, then:
+
+```bash
+bruin import database --connection lakota-src --schema src_core --ingestr --destination postgres scratch_import
+find scratch_import -type f
+cat scratch_import/assets/src_core/customers.asset.yml
+```
+
+`--ingestr --destination postgres` makes runnable ingestr assets that copy each table into the pipeline's default Postgres connection. Without `--ingestr` you get metadata-only `pg.source` placeholder assets that run nothing. Leaving off `--connection` opens an interactive picker instead. Add `--no-columns` to skip filling column metadata from the database.
+
+Compare the output with what you need. The draft keeps the source schema and table as the asset name (`src_core.customers`), so a run would copy into a `src_core` schema in the warehouse. It sets no `materialization`, no `incremental_key` and no primary key, which is the real design work: strategy, key and window are decisions Bruin cannot read from the source. UNVERIFIED: which column metadata and description the draft carries. Record what you see. Then delete the throwaway pipeline and write the three assets below by hand, which is the same shape with your decisions added:
+
+```bash
+rm -rf scratch_import
+```
+
+Similarly, `bruin patch fill-columns-from-db --connection lakota-src <asset>` can fill the `columns` block of an existing asset from a table's structure (`commands/patch.md`). You will use it in Module 11.
+
+### Step 1: the three assets
+
+Add to `lakota/assets/`:
 
 ```text
 lakota/assets/landing/
@@ -171,12 +214,12 @@ Validate, then do the initial load. The customer and account rows have old `upda
 ```bash
 cd ~/lakota-bruin
 bruin validate lakota
-bruin run lakota --tag landing --start-date 2000-01-01 --end-date 2026-01-02
+bruin run lakota --tag landing --start-date 2000-01-01 --end-date "2026-01-02 23:59:59.999999"
 ```
 
 `--tag landing` runs only the assets that carry the tag `landing` (`commands/run.md`). The assets below carry it. Tags are the course's way of running one layer at a time.
 
-The first run of ingestr may take longer because Bruin sets up ingestr through uv. UNVERIFIED on Windows. Record anything unusual: downloads, antivirus prompts, Python version messages.
+Seeds already ran through ingestr in Module 1, so uv and ingestr are installed. This is the first run that reads from one database and writes to another through ingestr. Record anything unusual: antivirus prompts, Python version messages, time per asset.
 
 Check the landing tables:
 
@@ -192,7 +235,7 @@ Look at the destination columns:
 bruin query --connection lakota-pg --query "select column_name, data_type from information_schema.columns where table_schema='landing' and table_name='core_customers' order by ordinal_position"
 ```
 
-Compare with the source columns. ingestr may add its own load-tracking columns. UNVERIFIED which ones and what their names are. Record them.
+Compare with the source columns. ingestr adds its own load-tracking columns to the destination. The ingestr docs mention a column named `_ingestr_loaded_at`, and other `_ingestr_*` columns may exist. Your seed tables from Module 1 carry the same kind of columns. UNVERIFIED: the full list and their Postgres types. Record them. Everything downstream in this course selects columns by name, because `SELECT *` would carry these along.
 
 ### Apply day 2 and load incrementally
 
@@ -200,7 +243,7 @@ Compare with the source columns. ingestr may add its own load-tracking columns. 
 cd "$COURSE/data"
 psql "$PGURL_SRC" -f sql/02_source_day2.sql
 cd ~/lakota-bruin
-bruin run lakota --tag landing --start-date 2026-01-03 --end-date 2026-01-03
+bruin run lakota --tag landing --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 ```
 
 Expected counts in landing after the run:
@@ -228,7 +271,7 @@ psql "$PGURL_SRC" -c "select status, count(*) from src_core.accounts group by 1 
 ### Re-run the same window
 
 ```bash
-bruin run lakota --tag landing --start-date 2026-01-03 --end-date 2026-01-03
+bruin run lakota --tag landing --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 ```
 
 Counts must not change (merge and delete+insert are safe to repeat). If they change, record the numbers.
@@ -237,7 +280,7 @@ Counts must not change (merge and delete+insert are safe to repeat). If they cha
 
 ```bash
 cd "$COURSE/data" && psql "$PGURL_SRC" -f sql/03_source_day3.sql && cd ~/lakota-bruin
-bruin run lakota --tag landing --start-date 2026-01-04 --end-date 2026-01-04
+bruin run lakota --tag landing --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
 Expected landing counts: customers 73, accounts 99 (source 97), transactions 325.
@@ -249,8 +292,8 @@ Commit: `git add lakota && git commit -m "Module 2: landing assets"`.
 These make the model stick. Record outcomes in the validation log.
 
 1. **Append duplicates.** Copy `core_transactions.asset.yml` to a probe asset named `landing.probe_txn_append`, change the strategy to `append`, run it twice for 2026-01-01 to 2026-01-02. Count rows. Then run the real `core_transactions` asset again and confirm it stays at its expected count. Delete the probe asset and its table afterward.
-2. **Window too narrow.** Reset the source with `01_source_init.sql`. Load customers with `--start-date 2026-01-03 --end-date 2026-01-03`. Expected: nothing loads, because no customer has `updated_at` on that date. This is why a first load needs a wide window.
-3. **Full refresh.** Run `bruin run lakota/assets/landing/core_customers.asset.yml --full-refresh` and observe what is rebuilt. Read `parameters.full_refresh` and `start_date` in `assets/definition-schema.md` first. UNVERIFIED how ingestr applies the window during a full refresh. Record what you saw.
+2. **Window too narrow.** Reset the source with `01_source_init.sql`. Load customers with `--start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"`. Expected: nothing loads, because no customer has `updated_at` on that date. This is why a first load needs a wide window.
+3. **Full refresh.** Run `bruin run lakota/assets/landing/core_customers.asset.yml --full-refresh` and observe what is rebuilt. Read `parameters.full_refresh` and `start_date` in `assets/definition-schema.md` first. The Bruin side is settled from the CLI source: `--full-refresh` adds `--full-refresh` to the ingestr call; the interval start becomes the asset's top-level `start_date` (`YYYY-MM-DD`) when it has one and the run's `--start-date` otherwise; the interval end is always the run's end date. UNVERIFIED: how ingestr applies that window during a full refresh. Run it once without an asset `start_date` and with the default dates, then once with `--start-date 2000-01-01`, and compare row counts.
 4. **Same database as source and destination.** Add a connection `lakota-self` pointing to `bruin_course` (the warehouse) and create a table `public.selftest` in it. Write an ingestr asset that reads `public.selftest` through `lakota-self` and writes `landing.selftest_copy`. UNVERIFIED whether ingestr handles same-server source and destination without problems. Record the result.
 5. **Custom query source.** Replace `source_table` on a probe asset with `query:select customer_id, email, updated_at from src_core.customers where branch_id = 1`. Note the doc requirement that the incremental key must appear in the query's result.
 
@@ -282,11 +325,11 @@ Restore after each.
 <details>
 <summary>Answers</summary>
 
-1. Unknown connection name. Whether `validate` catches it before `run` is UNVERIFIED. Compare with Module 0 break/fix 1.
+1. Unknown connection name. Reading the CLI source, no lint rule checks that an ingestr asset's `source_connection` exists, so `validate` should pass and `run` should fail when the asset starts with a connection-not-found error. UNVERIFIED at runtime. Compare with Module 0 break/fix 1, where a missing default connection on a `pg.sql` asset can be caught earlier by the live query check in non-fast `validate`.
 2. ingestr cannot read the table, so the asset fails at run time with an error from the source. `validate` cannot know what tables exist in the source.
-3. The docs say `merge` requires primary keys, either from the source metadata or from columns marked `primary_key: true`. Expect a failure or a warning. UNVERIFIED which. Record it.
+3. The docs say `merge` requires primary keys, either from the source metadata or from columns marked `primary_key: true`. The CLI source has a validation rule that fails with "Materialization strategy 'merge' requires the 'primary_key' field to be set on at least one column". UNVERIFIED at runtime: record whether `validate` or `run` fails, and the message.
 4. `opened_date` does not change when an account is closed, so the window filter misses status changes. Landing keeps old statuses and the closed accounts do not show as CLOSED. The incremental key must be a column that moves whenever the row changes.
-5. The start is after the end. ingestr requires the start to be earlier than the end. UNVERIFIED whether Bruin or ingestr rejects it first.
+5. The start is after the end. Bruin rejects it before anything runs, with "Start date cannot be after end date. Given start date: ..., end date: ..." (CLI source, `cmd/run.go`). Start equal to end is accepted by Bruin. Whether ingestr accepts a zero-length window is UNVERIFIED, and it matters: a date-only `--end-date` equal to the start date is exactly that case (Module 1).
 </details>
 
 ## Check questions
@@ -311,9 +354,11 @@ Restore after each.
 
 | Step | Pass / fail | What actually happened |
 |---|---|---|
+| `bruin import database` draft: files created, asset names, columns and metadata present | | |
 | ingestr first-run setup (time, downloads, Windows issues) | | |
 | Initial load counts (60 / 83 / 150) | | |
-| Extra columns ingestr adds | | |
+| Extra columns ingestr adds (names, types) | | |
+| Break/fix 1: does validate catch the bad connection name? | | |
 | Day 2 counts (68 / 93 / 240) | | |
 | Re-run of the same window stable? | | |
 | Day 3 counts (73 / 99 / 325) | | |
