@@ -115,8 +115,9 @@ Use a simple password without `@`, `:`, `/` or `#` characters. It keeps connecti
 Set connection strings for `psql` in your shell. Add them to `~/.bashrc` so they persist:
 
 ```bash
-export PGURL="postgresql://bruin_course:choose-a-simple-password@localhost:5432/bruin_course"
-export PGURL_SRC="postgresql://bruin_course:choose-a-simple-password@localhost:5432/bruin_course_src"
+echo 'export PGURL="postgresql://bruin_course:choose-a-simple-password@localhost:5432/bruin_course"' >> ~/.bashrc
+echo 'export PGURL_SRC="postgresql://bruin_course:choose-a-simple-password@localhost:5432/bruin_course_src"' >> ~/.bashrc
+source ~/.bashrc
 psql "$PGURL" -c "select current_database(), current_user;"
 psql "$PGURL_SRC" -c "select current_database(), current_user;"
 ```
@@ -126,18 +127,19 @@ Expected: one row per command, showing `bruin_course` or `bruin_course_src` and 
 ## 0.6 Get the course repository and make your work repository
 
 You need two folders: the course repository (read-only reference, holds the data) and your own Bruin project (where you build).
-
+*Change $HOME to the directory you downloaded the course if you're running windows*
 ```bash
 cd ~
 git clone https://github.com/jacksoneyton/Bruin-for-Data-Engineers.git
-export COURSE="$HOME/Bruin-for-Data-Engineers/course"
+echo 'export COURSE="$HOME/Bruin-for-Data-Engineers/course"' >> ~/.bashrc
+source ~/.bashrc
 
 mkdir lakota-bruin
 cd lakota-bruin
 git init
 ```
 
-Add `export COURSE=...` to `~/.bashrc` as well.
+~Add `export COURSE=...` to `~/.bashrc` as well.~
 
 A Bruin project is a Git repository, and `.bruin.yml` must live at its root (`core-concepts/project.md`). That is why your work lives in its own repository.
 
