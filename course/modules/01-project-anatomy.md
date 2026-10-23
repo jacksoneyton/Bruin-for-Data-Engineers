@@ -156,7 +156,7 @@ materialization:
 SELECT product_code,
        product_name,
        product_type,
-       round(interest_rate * 100, 2) AS rate_pct
+       round((interest_rate * 100)::numeric, 2) as rate_pct
 FROM ref.products
 ```
 
