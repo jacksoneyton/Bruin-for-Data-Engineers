@@ -373,7 +373,7 @@ bruin connections test --name lakota-src
 
 Source: `commands/connections.md`. `list` prints connection type, name and the names of filled fields, never the values. `test` runs a simple validation check against the connection and, without `--env`, uses the default environment from `.bruin.yml`.
 
-**VS Code:** the extension shows the connections in `.bruin.yml` and has a test action for each (the reviewer saw both on extension 0.84.8, issue #1; not in the extension documentation). The database browser in the Bruin activity-bar view lists connections, databases, schemas and tables (`vscode-extension/panels/activity-bar.md`), which also confirms that Bruin can reach the server. Use whichever you prefer. The CLI commands above are what the check script in 0.11 runs.
+**VS Code:** the extension shows the connections in `.bruin.yml` and has a test action for each. The database browser in the Bruin activity-bar view lists connections, databases, schemas and tables (`vscode-extension/panels/activity-bar.md`), which also confirms that Bruin can reach the server. Use whichever you prefer. The CLI commands above are what the check script in 0.11 runs.
 
 Now that Bruin has a connection, check the server version with it, instead of `psql`:
 
