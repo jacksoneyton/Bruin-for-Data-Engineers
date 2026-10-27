@@ -280,7 +280,7 @@ cd ~/lakota-bruin
 bruin init empty smoke
 ```
 
-**VS Code:** the Bruin extension has its own project-init flow (the reviewer saw it on extension 0.84.8 while following issue #1; it is not described in the extension documentation). Open the empty `lakota-bruin` folder in VS Code (File, Open Folder), start the Bruin init flow from the extension, pick the `empty` template and name the folder `smoke`. The extension runs the same scaffold as the CLI command, so everything below applies. If you cannot find the flow in your version, run the CLI command.
+**VS Code:** the Bruin extension has its own project-init flow. Open the empty `lakota-bruin` folder in VS Code (File, Open Folder), start the Bruin init flow from the extension, pick the `empty` template and name the folder `smoke`. The extension runs the same scaffold as the CLI command, so everything below applies. If you cannot find the flow in your version, run the CLI command.
 
 What this does, from `commands/init.md` and, where marked, from reading the CLI source at the v0.11.773 tag (`cmd/init.go`):
 
