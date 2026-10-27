@@ -109,7 +109,7 @@ Use one of these.
 Use version 17 or newer. The materialization docs list PostgreSQL 17 or later as the requirement for `scd2_by_column` and `scd2_by_time`. Everything before Module 8 works on older versions, but you will hit a wall there. You check the server version in 0.9, after Bruin has a connection to it.
 
 Make sure `psql` runs in Git Bash. If `psql --version` fails after a native Windows install, add the Postgres `bin` folder to your `PATH`, for example:
-
+*Verify your postgres installation path before running, yours might live in D:\pgdata\bin or similar instead depending on how Postgres was deployed in your organization*
 ```bash
 echo 'export PATH="/c/Program Files/PostgreSQL/16/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
