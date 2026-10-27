@@ -52,7 +52,7 @@ Bruin installs ingestr itself, and an asset can choose the engine with `paramete
 
 ## 2.2 Prepare the source system
 
-The source system is the `src_core` schema in `bruin_course_src`. A SQL script creates it and loads day 1.
+The source system is the `src_core` schema in your source database (`$COURSE_SRC_DB`, `<prefix>_bruin_course_src`; Module 0, 0.5). A SQL script creates it and loads day 1. The script is loaded with `psql`, because it uses `psql` meta-commands to read the CSV files. pgAdmin's Query Tool cannot run it.
 
 ```bash
 cd "$COURSE/data"
@@ -100,8 +100,9 @@ The source schema has to exist before you can import from it. Apply the day 1 sc
 ```bash
 bruin import database --connection lakota-src --schema src_core --ingestr --destination postgres scratch_import
 find scratch_import -type f
-cat scratch_import/assets/src_core/customers.asset.yml
 ```
+
+Open `scratch_import/assets/src_core/customers.asset.yml` in VS Code (or `cat` it) to read one generated asset.
 
 `--ingestr --destination postgres` makes runnable ingestr assets that copy each table into the pipeline's default Postgres connection. Without `--ingestr` you get metadata-only `pg.source` placeholder assets that run nothing. Leaving off `--connection` opens an interactive picker instead. Add `--no-columns` to skip filling column metadata from the database.
 
@@ -265,7 +266,7 @@ bruin query --connection lakota-pg --query "select status, count(*) from landing
 Day 2 closed three accounts. Compare with the source:
 
 ```bash
-psql "$PGURL_SRC" -c "select status, count(*) from src_core.accounts group by 1 order by 1"
+bruin query --connection lakota-src --query "select status, count(*) from src_core.accounts group by 1 order by 1"
 ```
 
 ### Re-run the same window
@@ -294,7 +295,7 @@ These make the model stick. Record outcomes in the validation log.
 1. **Append duplicates.** Copy `core_transactions.asset.yml` to a probe asset named `landing.probe_txn_append`, change the strategy to `append`, run it twice for 2026-01-01 to 2026-01-02. Count rows. Then run the real `core_transactions` asset again and confirm it stays at its expected count. Delete the probe asset and its table afterward.
 2. **Window too narrow.** Reset the source with `01_source_init.sql`. Load customers with `--start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"`. Expected: nothing loads, because no customer has `updated_at` on that date. This is why a first load needs a wide window.
 3. **Full refresh.** Run `bruin run lakota/assets/landing/core_customers.asset.yml --full-refresh` and observe what is rebuilt. Read `parameters.full_refresh` and `start_date` in `assets/definition-schema.md` first. The Bruin side is settled from the CLI source: `--full-refresh` adds `--full-refresh` to the ingestr call; the interval start becomes the asset's top-level `start_date` (`YYYY-MM-DD`) when it has one and the run's `--start-date` otherwise; the interval end is always the run's end date. UNVERIFIED: how ingestr applies that window during a full refresh. Run it once without an asset `start_date` and with the default dates, then once with `--start-date 2000-01-01`, and compare row counts.
-4. **Same database as source and destination.** Add a connection `lakota-self` pointing to `bruin_course` (the warehouse) and create a table `public.selftest` in it. Write an ingestr asset that reads `public.selftest` through `lakota-self` and writes `landing.selftest_copy`. UNVERIFIED whether ingestr handles same-server source and destination without problems. Record the result.
+4. **Same database as source and destination.** Add a connection `lakota-self` pointing to your warehouse database (`$COURSE_DB`, the same credentials JSON as `lakota-pg` in Module 0, 0.8) and create a table `public.selftest` in it (`psql "$PGURL"` or pgAdmin's Query Tool). Write an ingestr asset that reads `public.selftest` through `lakota-self` and writes `landing.selftest_copy`. UNVERIFIED whether ingestr handles same-server source and destination without problems. Record the result.
 5. **Custom query source.** Replace `source_table` on a probe asset with `query:select customer_id, email, updated_at from src_core.customers where branch_id = 1`. Note the doc requirement that the incremental key must appear in the query's result.
 
 ## 2.5 Other sources (read, do not run)

@@ -385,7 +385,7 @@ Commit: `git add lakota && git commit -m "Module 3: materialization strategies"`
 Both replace a slice. They differ when the new result has no rows for part of the slice.
 
 ```bash
-psql "$PGURL" -c "delete from landing.core_transactions where txn_ts::date = '2026-01-03'"
+psql "$PGURL" -c "delete from landing.core_transactions where txn_ts::date = '2026-01-03'"   # a write, so psql (or pgAdmin's Query Tool on $COURSE_DB)
 bruin run lakota/assets/mart/daily_txn_summary.sql --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 bruin run lakota/assets/mart/channel_daily.sql    --start-date 2026-01-03 --end-date "2026-01-03 23:59:59.999999"
 bruin query --connection lakota-pg --query "select txn_date, count(*) from mart.daily_txn_summary group by 1 order by 1" 

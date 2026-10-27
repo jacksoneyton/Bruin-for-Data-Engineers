@@ -24,11 +24,13 @@ Answers are at the end.
 
 Your pipelines refer to connections by name (`lakota-pg` in `pipeline.yml`). An environment is a set of connections with the same names pointing somewhere else. The pipeline code does not change.
 
-Create a development database. Use the same administrator session you used in Module 0:
+Module 0 (0.5) already created your development database, `$COURSE_DEV_DB` (`<prefix>_bruin_course_dev`). Confirm that it exists and that your login can use it:
 
-```sql
-CREATE DATABASE bruin_course_dev OWNER bruin_course;
+```bash
+psql "${PGURL%/*}/$COURSE_DEV_DB" -c "select current_database();"
 ```
+
+If the database does not exist, create it the way you created the other two (Module 0, 0.5, Step 3A, 3B or 3C).
 
 Clone the default environment, then point the copy at the dev database:
 
@@ -42,10 +44,11 @@ bruin environments clone --source default --target dev
 
 ```bash
 bruin connections delete --env dev --name lakota-pg
-bruin connections add --env dev --type postgres --name lakota-pg --credentials '{"username": "bruin_course", "password": "choose-a-simple-password", "host": "localhost", "port": 5432, "database": "bruin_course_dev"}'
+bruin connections add --env dev --type postgres --name lakota-pg \
+  --credentials "{\"username\": \"$COURSE_PG_USER\", \"password\": \"$COURSE_PG_PASSWORD\", \"host\": \"$COURSE_PG_HOST\", \"port\": $COURSE_PG_PORT, \"database\": \"$COURSE_DEV_DB\"}"
 ```
 
-The password is now in your shell history. That is acceptable for a throwaway lab password, and not for a real one. Open `.bruin.yml` afterwards and read the `dev` block to see what the commands wrote. The documented connection fields for Postgres (`platforms/postgres.md`) are `username`, `password`, `host`, `port`, `database`, `schema`, `pool_max_conns`, `ssl_mode` and `read_only`.
+Your shell history holds the variable names, not the password. The expanded password still reaches the Bruin process as a flag, which matters in 10.4 (run state stores the command line), and it now sits in plain text in `.bruin.yml`. Open `.bruin.yml` afterwards and read the `dev` block to see what the commands wrote. The documented connection fields for Postgres (`platforms/postgres.md`) are `username`, `password`, `host`, `port`, `database`, `schema`, `pool_max_conns`, `ssl_mode` and `read_only`.
 
 ```bash
 bruin connections list --environment dev
@@ -64,8 +67,8 @@ bruin run lakota --environment dev --exclude-tag landing --full-refresh --start-
 Compare the two databases:
 
 ```bash
-psql "$PGURL" -Atc "select current_database(), count(*) from staging.customers"
-psql "postgresql://bruin_course:choose-a-simple-password@localhost:5432/bruin_course_dev" -Atc "select current_database(), count(*) from staging.customers"
+bruin query --connection lakota-pg --query "select current_database(), count(*) from staging.customers"
+bruin query --connection lakota-pg --env dev --query "select current_database(), count(*) from staging.customers"
 ```
 
 The source system may be at a different day than the dev run's window, which makes the counts differ. Explain any difference you see. Record whether `ctl.pipeline_status` in dev got a marker row and which pipeline reads it. If a consumer pipeline from Module 9 ran in dev, would it read dev's marker or the default environment's? Why?
@@ -85,7 +88,7 @@ Run only the downstream layers first, with landing left alone:
 
 ```bash
 bruin run lakota --environment dev_jane --exclude-tag landing --full-refresh --start-date 2026-01-01 --end-date "2026-01-04 23:59:59.999999"
-psql "$PGURL" -c "select table_schema, table_name from information_schema.tables where table_schema like 'jane%' order by 1, 2"
+bruin query --connection lakota-pg --query "select table_schema, table_name from information_schema.tables where table_schema like 'jane%' order by 1, 2"
 ```
 
 The docs say an asset named `mart.customers` becomes `jane_mart.customers`. Record:
@@ -99,8 +102,8 @@ The docs say an asset named `mart.customers` becomes `jane_mart.customers`. Reco
 Clean up what you created. List the schemas first, then drop each one that starts with `jane_`:
 
 ```bash
-psql "$PGURL" -Atc "select nspname from pg_namespace where nspname like 'jane\\_%'"
-psql "$PGURL" -c "drop schema if exists jane_mart cascade"   # repeat for each schema listed
+bruin query --connection lakota-pg --query "select nspname from pg_namespace where nspname like 'jane\_%'"
+psql "$PGURL" -c "drop schema if exists jane_mart cascade"   # repeat for each schema listed (pgAdmin's Query Tool works too)
 ```
 
 ### Which style should the bank use?
@@ -127,7 +130,7 @@ Fill in the table in your notes. The first rows come from `getting-started/deven
 Test the hazard once on a copy: `export LAKOTA_PW=...`, run `bruin environments clone --source default --target hazard_test`, then look for the plain password in the file. Delete the clone and restore the references.
 
 ```bash
-export LAKOTA_PW='choose-a-simple-password'
+export LAKOTA_PW="$COURSE_PG_PASSWORD"
 ```
 
 In `.bruin.yml`, change the password of `lakota-pg` and `lakota-src` in `default` to `${LAKOTA_PW}`. This is one of the few edits you make by hand, because the CLI has no way to store a reference. Then:
@@ -158,10 +161,10 @@ Record whether it worked without the file, and whether Bruin created a new empty
 ### Are credentials in your logs?
 
 ```bash
-grep -rl "choose-a-simple-password" logs/ 2>/dev/null | head
+grep -rl "$COURSE_PG_PASSWORD" logs/ 2>/dev/null | head
 ```
 
-The docs say `--mask-credentials` is on by default and redacts credential values in run logs. Confirm that no log contains the password. Masking covers terminal and log output. The run-state JSON under `logs/runs` stores the command line as you typed it (`cmdline`, `pkg/scheduler/scheduler.go`), so do not pass secrets as flags (`--var`, `connections add --credentials`) on shared machines. That also keeps them out of shell history. Also check `git status` and `git log -p -S "choose-a-simple-password"` in your repository to make sure the password never entered a commit.
+The docs say `--mask-credentials` is on by default and redacts credential values in run logs. Confirm that no log contains the password. Masking covers terminal and log output. The run-state JSON under `logs/runs` stores the command line as you typed it (`cmdline`, `pkg/scheduler/scheduler.go`), so do not pass secrets as flags (`--var`, `connections add --credentials`) on shared machines. That also keeps them out of shell history. Also check `git status` and `git log -p -S "$COURSE_PG_PASSWORD"` in your repository to make sure the password never entered a commit.
 
 ## 10.5 Secrets in assets
 
@@ -250,7 +253,7 @@ bruin environments clone --source default --target prod
 bruin environments clone --source default --target prd
 ```
 
-Point each clone's `lakota-pg` at `bruin_course_dev` first so that a mistaken run can only touch the dev database. Then run a harmless asset in each (the `ddl` asset is a no-op after the first run):
+Point each clone's `lakota-pg` at `$COURSE_DEV_DB` first so that a mistaken run can only touch the dev database. Then run a harmless asset in each (the `ddl` asset is a no-op after the first run):
 
 ```bash
 bruin run lakota/assets/ctl/run_audit.sql --environment production

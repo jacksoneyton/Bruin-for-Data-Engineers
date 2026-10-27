@@ -300,7 +300,7 @@ The transactions in the dataset fall between 2026-01-01 and 2026-01-04. Make sur
 
 ```bash
 bruin run lakota --tag landing --start-date 2000-01-01 --end-date "2026-01-04 23:59:59.999999"
-psql "$PGURL" -c "truncate mart.daily_txn_summary"
+psql "$PGURL" -c "truncate mart.daily_txn_summary"   # a write, so psql (or pgAdmin's Query Tool on $COURSE_DB)
 ```
 
 The docs say to initialize incremental destination tables before backfilling, which the truncate approach satisfies because the table already exists. Full refresh and streaming are not supported by `bruin backfill`.

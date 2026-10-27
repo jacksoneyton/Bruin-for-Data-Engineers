@@ -6,9 +6,10 @@ Written against Bruin CLI v0.11.773 and the official docs at that version.
 
 ## What you need
 
-- Git and a shell (Git Bash on Windows, bash on Linux or macOS).
+- Git and a shell (Git Bash on Windows, bash on Linux or macOS). On Windows, Git Bash is also the terminal inside VS Code (Module 0, 0.1).
+- VS Code with the Bruin extension is recommended. The course was reviewed on extension version 0.84.8. Everything also works from the CLI alone.
 - Bruin CLI (Module 0 covers installing and pinning it).
-- A Postgres server you can create two databases on (Module 10 adds a third, `bruin_course_dev`). Use version 17 or newer if you want the history labs in Module 8. The `merge` strategy renders `MERGE INTO`, which needs version 15 or newer. No Docker is required. If you want an easy local server, the official Postgres container image is one option, but any server works.
+- A Postgres server and a login that can create three databases, or a DBA who creates them for you. The databases are named with your own prefix so several people can share one server and even one login (Module 0, 0.5). Use version 17 or newer if you want the history labs in Module 8. The `merge` strategy renders `MERGE INTO`, which needs version 15 or newer. No Docker is required. If you want an easy local server, the official Postgres container image is one option, but any server works.
 - Python 3 on the path for a few helper steps. Bruin manages its own Python environments for Python assets.
 - About 50 to 55 hours in total, spread however you like.
 
@@ -44,7 +45,7 @@ Do them in order. Each module assumes the earlier ones.
 
 ## Where the labs run
 
-Everything runs in two databases that Module 0 creates (`bruin_course` as the warehouse and `bruin_course_src` as the fictional source system). The reset script refuses to run against any other database name. Do not point the labs at a database that holds real data.
+Everything runs in three databases that Module 0 (0.5) creates, each named with your prefix, which is your operating-system username in lowercase: `<prefix>_bruin_course` (the warehouse, `$COURSE_DB`), `<prefix>_bruin_course_src` (the fictional source system, `$COURSE_SRC_DB`) and `<prefix>_bruin_course_dev` (used in Module 10, `$COURSE_DEV_DB`). For a user `alex` they are `alex_bruin_course`, `alex_bruin_course_src` and `alex_bruin_course_dev`. Two learners on the same Postgres server, even with the same shared login, therefore never write into each other's databases. The reset script refuses to run against any database whose name does not match your variables. Do not point the labs at a database that holds real data.
 
 ## Repository layout
 
@@ -71,6 +72,9 @@ The author wrote these lessons from the official docs and tested what could be t
 
 - **Dates.** `bruin run` treats a date-only `--end-date` as midnight at the start of that day, which gives an empty or one-instant window. Every command in the course passes `--end-date "YYYY-MM-DD 23:59:59.999999"` to cover the whole day. `bruin backfill` treats a date-only end as inclusive.
 - **Project setup.** You create the project with `bruin init` and `bruin connections add`, not by writing `.bruin.yml` by hand. The two exceptions are `${VAR}` references and `config.full_refresh_restricted`, which the CLI cannot store (Module 10).
+- **Two tracks: VS Code and CLI.** Lab steps give the CLI command, and a **VS Code** note where the Bruin extension offers the same action. Run CLI commands in the VS Code terminal (Git Bash) or any Git Bash window. Extension steps come from the extension documentation (`vscode-extension/` in the Bruin docs) where it covers them, and otherwise from what the course reviewer saw on extension 0.84.8, which the lesson says. Some actions have no extension equivalent (for example `--only checks`), and the lesson then says to use the terminal.
+- **Reading data: `bruin query`.** Wherever a lab only reads from the database, it uses `bruin query --connection <name> --query "..."`, because that is the tool you will use in your own project and it needs no extra setup. Statements that change data (`drop`, `delete`, `truncate`, `insert`, `update`) and the loader scripts stay on `psql`. If you have pgAdmin, you can paste any one-off `psql -c "..."` statement into its Query Tool on the right database instead. The `-f` scripts under `data/sql` need `psql`.
+- **Docs paths.** A path such as `commands/run.md` in a lesson is a page in the Bruin docs. It is published at `https://getbruin.com/docs/bruin/commands/run.html`.
 - **Production names.** Bruin asks for confirmation only when an environment name contains `prod`, and only when `--environment` is passed explicitly (Module 10, 10.8).
 
 ## Recording findings

@@ -78,7 +78,7 @@ bash "$COURSE/tools/run_and_alert.sh" nightly_ok -- run lakota --exclude-tag lan
 # break something, then:
 bash "$COURSE/tools/run_and_alert.sh" nightly_fail -- run lakota --exclude-tag landing --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 echo "exit code: $?"
-cat logs/alerts/history.log
+cat logs/alerts/history.log   # or open the file in VS Code
 ```
 
 To test the webhook without an external service, run a throwaway listener in another terminal and point `ALERT_WEBHOOK_URL` at it:
@@ -104,11 +104,12 @@ Stop the listener when finished (`kill %1`). Then decide:
 
 `bruin data-diff` compares two tables, including across connections. Typical uses: dev against production, migration checks, and drift monitoring. By default it exits 0 even when differences exist; `--fail-if-diff` changes that.
 
-Set up two comparable databases. If you did Module 10 you already have `bruin_course_dev`. Add a second connection in the default environment pointing at it (this is a regular connection, not an environment switch, so both tables can be addressed in one command). Use the CLI, and run it with `LAKOTA_PW` unset so no reference is expanded into the file (Module 10, 10.4):
+Set up two comparable databases. You already have `$COURSE_DEV_DB` (`<prefix>_bruin_course_dev`) from Module 0, 0.5, and Module 10 filled it. Add a second connection in the default environment pointing at it (this is a regular connection, not an environment switch, so both tables can be addressed in one command). Use the CLI, and run it with `LAKOTA_PW` unset so no reference is expanded into the file (Module 10, 10.4):
 
 ```bash
 unset LAKOTA_PW
-bruin connections add --env default --type postgres --name lakota-pg-dev --credentials '{"username": "bruin_course", "password": "choose-a-simple-password", "host": "localhost", "port": 5432, "database": "bruin_course_dev"}'
+bruin connections add --env default --type postgres --name lakota-pg-dev \
+  --credentials "{\"username\": \"$COURSE_PG_USER\", \"password\": \"$COURSE_PG_PASSWORD\", \"host\": \"$COURSE_PG_HOST\", \"port\": $COURSE_PG_PORT, \"database\": \"$COURSE_DEV_DB\"}"
 bruin connections test --name lakota-pg-dev
 ```
 

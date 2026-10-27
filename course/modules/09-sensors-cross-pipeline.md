@@ -84,7 +84,7 @@ parameters:
 Make sure the table does not exist, then work through the modes:
 
 ```bash
-psql "$PGURL" -c "drop table if exists ops.late_arrival"
+psql "$PGURL" -c "drop table if exists ops.late_arrival"   # a write, so psql (or pgAdmin's Query Tool on $COURSE_DB)
 bruin validate sensor_lab
 bruin run sensor_lab --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 echo "exit code: $?"

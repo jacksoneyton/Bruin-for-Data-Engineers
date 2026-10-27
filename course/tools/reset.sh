@@ -6,14 +6,18 @@
 #   bash tools/reset.sh warehouse    Drop the course schemas in the warehouse database ($PGURL).
 #
 # Safety: both commands refuse to run unless the connected database has the expected
-# name (bruin_course for the warehouse, bruin_course_src for the source). The warehouse
+# name ($COURSE_DB for the warehouse, $COURSE_SRC_DB for the source; Module 0, section 0.5
+# sets both, for example alex_bruin_course and alex_bruin_course_src). The warehouse
 # command only drops the schemas listed below and the jane_* prefix schemas of Module 10,
-# never public. The dev database from Module 10 (bruin_course_dev) is not touched.
+# never public. The dev database from Module 10 ($COURSE_DEV_DB) is not touched.
 set -euo pipefail
 
 DATA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../data" && pwd)"
-WAREHOUSE_DB="${COURSE_DB_NAME:-bruin_course}"
-SOURCE_DB="${COURSE_SRC_DB_NAME:-bruin_course_src}"
+# COURSE_DB and COURSE_SRC_DB come from ~/.bruin_course_env (Module 0, section 0.5).
+# COURSE_DB_NAME and COURSE_SRC_DB_NAME remain as optional overrides.
+WAREHOUSE_DB="${COURSE_DB_NAME:-${COURSE_DB:-}}"
+SOURCE_DB="${COURSE_SRC_DB_NAME:-${COURSE_SRC_DB:-}}"
+[ -n "$WAREHOUSE_DB" ] && [ -n "$SOURCE_DB" ] || { echo "ERROR: COURSE_DB and COURSE_SRC_DB are not set. Do section 0.5 of Module 0 and open a new terminal."; exit 1; }
 SCHEMAS="smoke ref landing staging mart hist ctl dq ops lakota_reports risk"
 
 need() { [ -n "${!1:-}" ] || { echo "ERROR: $1 is not set"; exit 1; }; }

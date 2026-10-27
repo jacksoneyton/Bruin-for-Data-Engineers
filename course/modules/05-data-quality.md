@@ -210,7 +210,7 @@ bruin run lakota --only checks --exclude-tag landing --start-date 2026-01-04 --e
 ### Make a check fail on purpose
 
 ```bash
-psql "$PGURL" -c "update staging.txn_log set account_id = 999999 where txn_id = 1"
+psql "$PGURL" -c "update staging.txn_log set account_id = 999999 where txn_id = 1"   # a write, so psql (or pgAdmin's Query Tool on $COURSE_DB)
 bruin run lakota/assets/staging/txn_log.sql --only checks --start-date 2026-01-04 --end-date "2026-01-04 23:59:59.999999"
 ```
 
