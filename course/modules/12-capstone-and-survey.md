@@ -34,7 +34,7 @@ Keep it under a page. You will compare it against what you built.
 | R6 | History | `hist.account_band_hist`: SCD2 of each account's band and status, so you can answer "when did this account become HIGH". |
 | R7 | A Python asset | At least one Python asset using the SDK and a pipeline variable. Suggested: `risk.dormant_accounts`, accounts with no transactions in the last `dormant_days` days (variable, default 2) as of the data date, materialized by Bruin. It must be rerun-safe. |
 | R8 | Quality | Not null and unique on keys, accepted values on `band`, a custom check that the band counts in R4 add up to the account count in R3, and two unit tests on R3 and R5. At least one check must block downstream assets, and you must prove it by planting bad data. |
-| R9 | Policy | A `policy.yml` that requires every asset in `lakota_risk` to have an owner, a description and at least one tag. `bruin validate` fails before you comply and passes after. |
+| R9 | Policy | A `policy.yml` at the repository root (Bruin looks for `policy.yml` or `policy.yaml` there, not in the pipeline folder) that requires every asset in `lakota_risk` to have an owner, a description and at least one tag. Select the assets with a ruleset selector and use the built-in rules listed in `getting-started/policies.md`. `bruin validate` fails before you comply and passes after. |
 | R10 | Marker | Last asset writes `lakota_risk` as `DONE` for the data date into `ctl.pipeline_status`. It runs only when everything before it succeeded. |
 | R11 | Environments | The whole pipeline runs in a `dev` environment (separate database) with no code change, and a `data-diff` of dev and default for R3 is clean for the same date. |
 | R12 | Operations | A scheduled-style run through `run_if_ready.sh` inside a window, a deliberate failure raising an alert through `run_and_alert.sh`, `ci_local.sh` passing, and generated docs. |
@@ -98,7 +98,7 @@ Rules for yourself:
 Do all four on a real run, not on paper.
 
 1. **Late upstream.** Start the consumer on a date for which `lakota` has not finished. Show the gate holding, then release it by running `lakota`. Time how long the consumer took to proceed after the marker appeared.
-2. **Bad data.** Corrupt one source row so that a blocking check fails (for example, a balance of NULL, or a transaction with an unknown type, depending on your checks). Show that downstream assets are skipped, no marker is written, the alert fires, and the consumer's own downstream sees no marker. Then fix the source, resume with `bruin run --continue`, and show the marker appear.
+2. **Bad data.** Corrupt one source row so that a blocking check fails (for example, a balance of NULL, or a transaction with an unknown type, depending on your checks). Show that downstream assets are skipped, no marker is written, the alert fires, and the consumer's own downstream sees no marker. Then fix the source, resume with `bruin run lakota_risk --continue`, and show the marker appear. (`--continue` reuses the last run's flags and refuses to run if asset names, `enabled` flags or upstream lists changed.)
 3. **Rerun the same date.** Run the same date twice. Show row counts unchanged and the marker row updated, not duplicated.
 4. **Skipped day.** Skip a date entirely, run the next date, then run the skipped one late. Show which tables handle this correctly and which do not. SCD2 (R6) is the one to look at: what does `_valid_from` mean for a late run?
 
@@ -178,7 +178,7 @@ Read `getting-started/glossary.md`. Write two entities with attributes that matt
 
 Read `commands/ai-enhance.md`, `commands/ai-skills.md` and `getting-started/bruin-mcp.md`.
 
-- `bruin ai enhance` calls an AI command-line tool (Claude Code, OpenCode or Codex) to add descriptions, checks and tags to assets, using the asset and database schema.
+- `bruin ai enhance` calls an AI command-line tool (Claude Code, OpenCode or Codex) to add descriptions, checks and tags to assets, using the asset and database schema. What exactly it sends to the provider for each flag is UNVERIFIED in this version, so for a bank assume asset definitions, query text and schema leave the machine until you have read the command's docs page (`commands/ai-enhance.md`) and tested it on throwaway data.
 - `bruin ai skills` installs agent guidance files (`AGENTS.md` and bundled skills) into the repository.
 - `bruin mcp` lets an AI agent query data, compare tables, ingest data and build pipelines through Bruin.
 
@@ -186,7 +186,7 @@ Do not run any of these against real bank data in this course. The governance qu
 
 ### Templates and `bruin init` (15 minutes)
 
-Read `getting-started/templates.md`. List the templates your installed version offers (`bruin init --help`). Pick two that resemble your work and read their asset files for patterns worth borrowing. Do this in a scratch folder.
+Read `getting-started/templates.md`. List the templates your installed version offers (`bruin init --help`). Pick two that resemble your work and read their asset files for patterns worth borrowing. Do this in a scratch folder (Module 1, 1.2 has the `~/bruin-tour` routine). The `default` template targets DuckDB, which this course does not use as a target, so read it but do not run it. `empty` and `bronze-silver-postgres` are the Postgres-friendly scaffolds. Start the capstone with `bruin init empty lakota_risk` from the repository root, as you did for `lakota`.
 
 ### Telemetry (5 minutes)
 

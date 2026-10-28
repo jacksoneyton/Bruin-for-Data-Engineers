@@ -12,6 +12,10 @@
 #   5. otherwise runs the downstream pipeline for the data date.
 # A lock folder prevents two invocations from running at once.
 #
+# Requires GNU date (Git Bash, Linux, WSL). On macOS install coreutils and put gdate first on PATH.
+# Each "bruin query" call writes a small log file under logs/queries (git-ignored by Bruin).
+# Prune old ones if the poller runs for weeks: find logs/queries -mtime +7 -delete
+#
 # Settings (environment variables, defaults in brackets):
 #   CONN               Bruin connection holding ctl.pipeline_status    [lakota-pg]
 #   WINDOW_START_HOUR  first hour (0-23) in which polling is allowed    [5]
@@ -85,7 +89,8 @@ fi
 
 # 4. run downstream
 log "upstream DONE, running $DOWN"
-bruin run "$DOWN" --sensor-mode once --start-date "$DATE" --end-date "$DATE"
+# A date-only --end-date means midnight at the start of that day, so pass the end of the day.
+bruin run "$DOWN" --sensor-mode once --start-date "$DATE" --end-date "$DATE 23:59:59.999999"
 RC=$?
 log "bruin exit code $RC"
 exit $RC
