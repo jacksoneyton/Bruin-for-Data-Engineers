@@ -139,7 +139,7 @@ columns:
     type: float
 ```
 
-By default seeds enforce the column types you list (`enforce_schema: true`), and Bruin passes them to ingestr as type hints (`assets/seed.md`). The type names above (`integer`, `string`, `date`, `float`) are all in Bruin's type mapping (CLI source, `pkg/python/columns.go`). If your run rejects one, change it to `string` and record it in the validation log.
+By default seeds enforce the column types you list (`enforce_schema: true`), and Bruin passes them to ingestr as type hints (`assets/seed.md`). The type names above (`integer`, `string`, `date`, `float`) are all in Bruin's type mapping (CLI source, `pkg/python/columns.go`). If your run rejects one, change it to `string` and record it in the validation log to improve this course.
 
 **VS Code:** when you open an `.asset.yml` or a `.sql` file with a Bruin block, the extension highlights the block as YAML, offers autocomplete for the asset properties and validates it as you type (`vscode-extension/panels/side-panel/editor-experience.md`). For a new SQL or Python asset you can type `!fullsqlasset` or `!fullpythonasset` to insert a full template (`vscode-extension/getting-started.md`). The side panel's Columns tab edits the same `columns:` list you are typing by hand (`panels/side-panel/tabs.md`).
 
@@ -249,7 +249,7 @@ bruin run lakota --only checks --start-date 2026-01-01 --end-date "2026-01-01 23
 - `--downstream` adds everything that depends on it.
 - `--only checks` runs quality checks without refreshing data (`commands/run.md`).
 
-**VS Code:** the reviewer found a run-with-downstream option in the extension's asset actions (extension 0.84.8, issue #2; it is not described in the extension documentation snapshot). It runs the open asset plus everything that depends on it, the same as `--downstream`. The reviewer found no equivalent for `--only checks`, so run that one in the terminal.
+**VS Code:** Run-with-downstream is an option in the extension's asset actions. It runs the open asset plus everything that depends on it, the same as `--downstream`. There is no equivalent for `--only checks`, so run that one in the terminal.
 - `bruin run` lints the pipeline before it executes anything. `--no-validation` skips that step. The `bruin validate` you ran earlier is not optional hygiene before a run, because the run repeats the offline part of it.
 
 ### Step 6: inspect
